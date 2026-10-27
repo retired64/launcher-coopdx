@@ -153,8 +153,10 @@ La textura de madera se escala a 640×640 y se repite. Cada pestaña elige una:
 | Opciones, Copiar | `wood_green` |
 | Jugar con amigos | `wood_blue` |
 
-La barra lateral usa `wood_yellow` con un velo blanco. El cambio se hace con
-`data-view` en `<html>` y la clase `rom`.
+La barra lateral usa **la misma madera que la pestaña activa**, así el menú
+cambia de color junto con la pantalla (azul en Buscar y Jugar, rojo en Jugador,
+rosa en Crear, verde en Opciones y Copiar, amarillo en Mis mods y Partidas). El
+cambio se hace con `data-view` en `<html>` y la clase `rom`.
 
 ### Títulos y logotipo
 

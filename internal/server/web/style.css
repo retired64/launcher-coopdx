@@ -184,9 +184,7 @@ sm64-text .sm64-fallback {
   padding: var(--space-6) var(--space-4) var(--space-4);
 }
 html.rom .rail {
-  background:
-    linear-gradient(rgba(255, 255, 255, .22), rgba(255, 255, 255, .22)),
-    var(--tex-wood-yellow) -200px 0 / 640px 640px;
+  background: var(--tab-wood) -200px 0 / 640px 640px;
   box-shadow: inset calc(var(--px) * -2) 0 0 rgba(55, 30, 0, .5);
 }
 

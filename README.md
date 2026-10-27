@@ -221,7 +221,8 @@ tu máquina y guarda el resultado en su caché.
 
 - **Fondo de cada pestaña**: las maderas del juego (amarillo en Mis mods,
   Partidas y Perfiles; azul en Buscar; rojo en Jugador; rosa en Crear; verde en
-  Opciones y Copiar).
+  Opciones y Copiar). El **menú lateral usa la misma madera que la pestaña
+  activa**, así cambia de color junto con la pantalla.
 - **Títulos y logotipo**: las letras del HUD, cada una con su color, como
   `MIS MODS` u `OPCIONES`.
 - **Texto**: la fuente de diálogo del juego; las etiquetas usan la fuente de
