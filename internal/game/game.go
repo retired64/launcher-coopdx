@@ -23,13 +23,38 @@ var ErrNotFound = errors.New("sm64coopdx was not found in that folder")
 // Exe returns the executable name for this platform.
 func Exe() string { return paths.ExeName() }
 
+// Executable returns the path to the game binary inside dir.
+// Besides a plain sm64coopdx binary it understands the macOS .app layout.
+func Executable(dir string) (string, bool) {
+	if dir == "" {
+		return "", false
+	}
+	candidates := []string{
+		filepath.Join(dir, Exe()),
+		filepath.Join(dir, "sm64coopdx.app", "Contents", "MacOS", "sm64coopdx"),
+		filepath.Join(dir, "Contents", "MacOS", "sm64coopdx"),
+	}
+	for _, path := range candidates {
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// Resolve returns the folder that actually contains the executable.
+func Resolve(dir string) (string, bool) {
+	exe, ok := Executable(dir)
+	if !ok {
+		return "", false
+	}
+	return filepath.Dir(exe), true
+}
+
 // Valid reports whether dir contains the game executable.
 func Valid(dir string) bool {
-	if dir == "" {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(dir, Exe()))
-	return err == nil && info.Mode().IsRegular()
+	_, ok := Executable(dir)
+	return ok
 }
 
 // Detect looks in the usual places for a sm64coopdx folder.
@@ -65,11 +90,11 @@ func Detect() string {
 		}
 	}
 	for _, dir := range dirs {
-		if Valid(dir) {
-			return dir
+		if resolved, ok := Resolve(dir); ok {
+			return resolved
 		}
-		if Valid(filepath.Join(dir, "sm64coopdx")) {
-			return filepath.Join(dir, "sm64coopdx")
+		if resolved, ok := Resolve(filepath.Join(dir, "sm64coopdx")); ok {
+			return resolved
 		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -80,11 +105,11 @@ func Detect() string {
 				continue
 			}
 			candidate := filepath.Join(dir, e.Name())
-			if Valid(candidate) {
-				return candidate
+			if resolved, ok := Resolve(candidate); ok {
+				return resolved
 			}
-			if Valid(filepath.Join(candidate, "sm64coopdx")) {
-				return filepath.Join(candidate, "sm64coopdx")
+			if resolved, ok := Resolve(filepath.Join(candidate, "sm64coopdx")); ok {
+				return resolved
 			}
 		}
 	}
@@ -138,11 +163,12 @@ func runningLinux() bool {
 // Launch starts the game detached from the loader.
 // It returns as soon as the process has started.
 func Launch(dir string, args []string) error {
-	if !Valid(dir) {
+	exe, ok := Executable(dir)
+	if !ok {
 		return ErrNotFound
 	}
-	cmd := exec.Command(filepath.Join(dir, Exe()), args...)
-	cmd.Dir = dir
+	cmd := exec.Command(exe, args...)
+	cmd.Dir = filepath.Dir(exe)
 	// The loader must not keep the game attached to its own stdin/stdout.
 	cmd.Stdin = nil
 	cmd.Stdout = nil

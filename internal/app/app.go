@@ -443,9 +443,11 @@ func (s *Service) DeleteProfile(name string) error {
 // SetGamePath validates and stores the game folder.
 func (s *Service) SetGamePath(dir string) error {
 	dir = strings.TrimSpace(dir)
-	if !game.Valid(dir) {
+	resolved, ok := game.Resolve(dir)
+	if !ok {
 		return game.ErrNotFound
 	}
+	dir = resolved
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
