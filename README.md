@@ -3,12 +3,13 @@
 Un gestor de mods, partidas y perfiles para **SM64 Coop Deluxe**, escrito en Go.
 Un solo binario, sin cgo, con una interfaz web local.
 
-> **Estado:** fases 0–4. Mods, catálogo, dependencias, perfiles, partidas,
-> ajustes, **juego online por código** (WebRTC + puente UDP) y **copia entre
-> dispositivos** (mods, aspecto y partidas) funcionan. El tema visual desde la
-> ROM es la siguiente fase.
+> **Estado:** fases 0–5. Mods, catálogo, dependencias, perfiles, partidas,
+> ajustes, **juego online por código** (WebRTC + puente UDP), **copia entre
+> dispositivos** (mods, aspecto y partidas) y **el aspecto del juego leído de tu
+> ROM** (texturas, letras, títulos y botones) funcionan. El visor 3D del
+> personaje es la siguiente fase.
 
-[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md) · [Sincronización de mods](docs/MOD_SYNC.md) · [Copia](docs/COPY.md)
+[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Aspecto desde la ROM](docs/THEME.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md) · [Sincronización de mods](docs/MOD_SYNC.md) · [Copia](docs/COPY.md)
 
 ---
 
@@ -35,29 +36,31 @@ Un solo binario, sin cgo, con una interfaz web local.
 | Consentimiento, ruta directa/relé y registro de conexión | ✅ |
 | Sincronización de mods del anfitrión al unirse (la hace el juego) | ✅ |
 | Copia de mods/aspecto/partidas por código (`copy/v1`) | ✅ |
-| Tema visual desde la ROM + visor 3D | ⏳ fase 5 |
+| Tema visual desde la ROM (texturas, fuentes, títulos, botones) | ✅ |
+| Jugador: nombre, personaje, colores y presets | ✅ |
+| Visor 3D del personaje | ⏳ fase 6 |
 
 ## Vista
 
-| Mods | Browse |
-|---|---|
-| ![Mods](docs/preview-mods.png) | ![Browse](docs/preview-browse.png) |
+El tema, las letras y los iconos salen de tu propia ROM. Las capturas los
+muestran con una ROM del autor; el repositorio no incluye los archivos de
+textura ni las fuentes extraídas.
 
-| Partidas | Ficha de un mod |
+| Mis mods | Buscar |
 |---|---|
-| ![Partidas](docs/preview-saves.png) | ![Ficha](docs/preview-detail.png) |
+| ![Mis mods](docs/preview-theme-mods.png) | ![Buscar](docs/preview-theme-browse.png) |
 
-| Play: crear o unirse | Anfitrión conectado |
+| Jugador | Partidas |
 |---|---|
-| ![Play](docs/preview-play.png) | ![Anfitrión](docs/preview-play-host.png) |
+| ![Jugador](docs/preview-theme-player.png) | ![Partidas](docs/preview-theme-saves.png) |
 
-| Unido a un amigo | |
+| Crear | Opciones |
 |---|---|
-| ![Unirse](docs/preview-play-join.png) | |
+| ![Crear](docs/preview-theme-create.png) | ![Opciones](docs/preview-theme-settings.png) |
 
-| Copy: enviar | Copy: revisar antes de aceptar |
+| Jugar con amigos | Copiar entre dispositivos |
 |---|---|
-| ![Enviar](docs/preview-copy-send.png) | ![Revisar](docs/preview-copy-review.png) |
+| ![Jugar](docs/preview-theme-play.png) | ![Copiar](docs/preview-theme-copy.png) |
 
 ## Empezar
 
@@ -75,7 +78,7 @@ go build -o coop-loader ./cmd/coop-loader
 Se abre `http://127.0.0.1:8787/?token=…`. El token es distinto en cada arranque:
 sin él, la API responde 401, así que una página cualquiera no puede manejar tus mods.
 
-Si no detecta el juego, elígelo en **Settings** o pásalo por CLI:
+Si no detecta el juego, elígelo en **Opciones** o pásalo por CLI:
 
 ```bash
 ./coop-loader game set "/ruta/a/sm64coopdx"
@@ -123,21 +126,21 @@ printf 'sound = 1\n' > "$XDG_DATA_HOME/sm64coopdx/sm64config.txt"
 Ahí puedes instalar un zip, activar mods, crear perfiles y probar el save sin
 miedo. Cuando cierres la terminal, tus datos reales siguen intactos.
 
-La pestaña **Browse** sí usa Internet (lee el sitio de mods), pero no descarga
-nada hasta que pulsas *Install*. La caché vive en el `XDG_CONFIG_HOME` del
+La pestaña **Buscar** sí usa Internet (lee el sitio de mods), pero no descarga
+nada hasta que pulsas *Instalar*. La caché vive en el `XDG_CONFIG_HOME` del
 entorno de prueba.
 
 ## Jugar con amigos (fase 3)
 
-En la pestaña **Play** hay dos caminos:
+En **Jugar con amigos** hay dos caminos:
 
-1. **Host a game.** El loader crea un código `ABCD-1234`, lo copia al
+1. **Ser anfitrión.** El loader crea un código `ABCD-1234`, lo copia al
    portapapeles y se queda esperando en los puntos de encuentro.
-2. **Join a game.** El amigo escribe el código. Los dos clientes derivan la
-   misma sala con PBKDF2 y se encuentran sin abrir puertos en el router.
+2. **Unirse a una partida.** El amigo escribe el código. Los dos clientes
+   derivan la misma sala con PBKDF2 y se encuentran sin abrir puertos en el router.
 
-Cuando la sesión dice **Connected**, cualquiera de los dos pulsa **Open the
-game**. En el juego hay que elegir **Direct Connection**:
+Cuando la sesión dice **Conectado**, cualquiera de los dos pulsa **Abrir el
+juego**. En el juego hay que elegir **Direct Connection**:
 
 - anfitrión: **Host → Direct Connection → Host**;
 - amigo: **Join → Direct Connection → Join** con `localhost` o `127.0.0.1`.
@@ -176,20 +179,23 @@ El protocolo exacto, los temporizadores y la máquina de estados están en
 
 ## Copiar entre dispositivos (fase 4)
 
-La pestaña **Copy** mueve los mods, el aspecto del jugador (nombre, personaje y
-colores) y las partidas entre dos computadores o teléfonos. No hace falta estar
-en la misma red: usa los mismos puntos de encuentro que **Play**.
+La pestaña **Copiar entre dispositivos** mueve los mods, el aspecto del jugador
+(nombre, personaje y colores) y las partidas entre dos computadores o teléfonos.
+No hace falta estar en la misma red: usa los mismos puntos de encuentro que
+**Jugar con amigos**.
 
-1. En un dispositivo: **Copy → Send from this computer**. Aparece un código.
-2. En el otro: **Copy → Get from another device**, escribe el código.
-3. El receptor revisa qué va a copiar. Puede desmarcar **Mods**, **Look** o
-   **Saves**.
-4. **Copy to this computer**. Se ve el progreso y, al terminar, **Done**.
+1. En un dispositivo: **Copiar entre dispositivos → Enviar desde este
+   computador**. Aparece un código.
+2. En el otro: **Copiar entre dispositivos → Recibir de otro dispositivo**,
+   escribe el código.
+3. El receptor revisa qué va a copiar. Puede desmarcar **Mods**, **Aspecto** o
+   **Partidas**.
+4. **Copiar a este computador**. Se ve el progreso y, al terminar, **Listo**.
 
 Qué hay que saber:
 
 - **Es distinto de unirse a una partida.** Al jugar, el juego ya sincroniza los
-  mods activos del anfitrión (ver [MOD_SYNC.md](docs/MOD_SYNC.md)). **Copy** sirve
+  mods activos del anfitrión (ver [MOD_SYNC.md](docs/MOD_SYNC.md)). **Copiar** sirve
   para preinstalar mods, mover el aspecto y llevar las partidas a otro
   dispositivo, incluso sin abrir el juego.
 - **Lo reemplazado no se borra.** Mods, paletas, partidas y `.sav` van a
@@ -206,9 +212,36 @@ Qué hay que saber:
 El protocolo exacto (roles, manifiesto, frames, ventana, ACKs y reglas de
 aplicación) está en [docs/COPY.md](docs/COPY.md).
 
+## El aspecto del juego (fase 5)
+
+La interfaz usa la **ROM de Super Mario 64 (USA)** que ya tienes para
+`sm64coopdx`. No se incluye ningún recurso de Nintendo: el loader lee la ROM en
+tu máquina y guarda el resultado en su caché.
+
+- **Fondo de cada pestaña**: las maderas del juego (amarillo en Mis mods,
+  Partidas y Perfiles; azul en Buscar; rojo en Jugador; rosa en Crear; verde en
+  Opciones y Copiar).
+- **Títulos y logotipo**: las letras del HUD, cada una con su color, como
+  `MIS MODS` u `OPCIONES`.
+- **Texto**: la fuente de diálogo del juego; las etiquetas usan la fuente de
+  menú.
+- **Botones**: mármol oscuro, madera verde para Jugar, azul para instalar y roja
+  para borrar.
+- **Partidas**: caras de Mario, iconos de estrella y el rótulo `NUEVO`.
+- **Jugador**: nombre, personaje, ocho colores y presets leídos de
+  `sm64config.txt` y de las carpetas `palettes/`.
+
+En **Opciones → Estilo del juego → Usar otro archivo** eliges la ROM. También se
+busca sola en `<datos del juego>/baserom.us.z64` y en la carpeta del juego. Se
+valida el SHA-1 de la USA 1.0 antes de leer nada.
+
+Si no hay ROM, la app sigue funcionando con un tema sobrio y texto normal; no se
+rompe nada. La extracción, los offsets y las decisiones están en
+[docs/THEME.md](docs/THEME.md).
+
 ## Catálogo y dependencias
 
-La pestaña **Browse** lee el sitio `mods.sm64coopdx.com`. Como el sitio no tiene
+La pestaña **Buscar** lee el sitio `mods.sm64coopdx.com`. Como el sitio no tiene
 API, el loader descarga el HTML y lo interpreta:
 
 - **Caché** de una hora en `~/.config/coop-loader/site-cache.json`.
@@ -299,6 +332,7 @@ internal/deps        escaneo de globales Lua y emparejamiento de nombres
 internal/installed   procedencia y versión de los mods instalados
 internal/session     código de sala, señalización, WebRTC y puente UDP
 internal/devicecopy  copy/v1: manifiesto, frames, SHA-256 y staging
+internal/rom         ROM USA: MIO0, texturas, fuentes, HUD y nombres
 internal/conf        sm64config.txt y perfiles
 internal/eeprom      partida de 512 bytes
 internal/mods        descubrimiento, metadatos, instalación, borrado
@@ -326,7 +360,9 @@ escaneo de globales Lua, la resolución de dependencias, el vector PBKDF2, el
 cifrado de SDP, el puente UDP (host/join, `STILL_HERE`, caché y reenvío), una
 partida completa host↔join contra un relay WebSocket local, y la copia
 `copy/v1` (manifiesto, rutas seguras, SHA-256, archivos vacíos y grandes,
-staging, configuración, paletas, partida y `.sav`).
+staging, configuración, paletas, partida y `.sav`), el jugador y sus presets, y
+la extracción de la ROM (16 texturas, 50 dibujos del HUD, dos fuentes y los
+nombres de niveles) contra una extracción de referencia.
 
 ## Roadmap
 
@@ -336,13 +372,13 @@ staging, configuración, paletas, partida y `.sav`).
 | 2 | catálogo del sitio + descargas + dependencias Lua | ✅ |
 | 3 | sesión por código: PBKDF2/AES-GCM, trackers, `pion/webrtc`, puente UDP 7777, reconexión | ✅ |
 | 4 | copia de mods/aspecto/partidas entre PC y Android (`copy/v1`) | ✅ |
-| 5 | tema visual y fuentes desde la ROM del usuario |
+| 5 | tema visual, fuentes y títulos desde la ROM del usuario | ✅ |
 | 6 | visor 3D del personaje leyendo el ejecutable del juego |
-| 7 | creador de mods, test headless, empaquetado, updater firmado |
+| 7 | creador de mods completo, test headless, empaquetado, updater firmado |
 
-La fase 3 está explicada a fondo en [docs/SESSION.md](docs/SESSION.md) y la fase
-4 en [docs/COPY.md](docs/COPY.md); el contrato de red de ambas, en
-[docs/PROTOCOL.md](docs/PROTOCOL.md).
+La fase 3 está explicada a fondo en [docs/SESSION.md](docs/SESSION.md), la fase
+4 en [docs/COPY.md](docs/COPY.md) y la fase 5 en [docs/THEME.md](docs/THEME.md);
+el contrato de red de las fases 3 y 4, en [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Sobre este proyecto
 
@@ -365,7 +401,7 @@ bajo otra cuenta.
 ## English summary
 
 A clean-room **Go** mod manager for SM64 Coop Deluxe: local single binary with an
-embedded web UI. Phases 0–4 cover game detection, mod discovery and installation
+embedded web UI. Phases 0–5 cover game detection, mod discovery and installation
 (zip/lua), `sm64config.txt` editing with backups, profiles, the 512-byte save
 file, the community mod catalog (browse/search/install/update), Lua global
 dependency resolution, and **online play by code** with a WebRTC DataChannel
@@ -375,10 +411,17 @@ host's mods preinstalled: the game itself transfers the host's active mod set
 and the joining client caches the missing files under `.tmp/<session>/` before
 entering.
 
+The interface borrows its look from the player's own Super Mario 64 (USA) ROM:
+wood backgrounds per tab, HUD lettering for titles, the dialog and menu bitmap
+fonts, marble buttons, Mario faces and star icons. Nothing is bundled; the ROM
+is read and verified locally and the extracted cache can be deleted at any time.
+The player tab edits the name, character, eight colours and palette presets.
+
 Device-to-device copy (`copy/v1`) moves mods, player look and saves over a
 separate encrypted DataChannel; it is a convenience for migrating devices, not a
 requirement for joining. The session engine is documented in
 [docs/SESSION.md](docs/SESSION.md), the copy channel in
-[docs/COPY.md](docs/COPY.md), and the wire contract in
+[docs/COPY.md](docs/COPY.md), the ROM theme in
+[docs/THEME.md](docs/THEME.md), and the wire contract in
 [docs/PROTOCOL.md](docs/PROTOCOL.md). Not affiliated with Nintendo or the sm64coopdx
 team; no game assets are bundled.

@@ -327,7 +327,7 @@ Cuando el juego se cierra, la sala **no** se cierra:
 - el join olvida `gameAddr`, porque un juego reiniciado puede usar otro puerto
   local; el siguiente datagrama lo fija de nuevo;
 - el enlace WebRTC y el código siguen vivos, así que se puede volver a abrir el
-  juego desde la misma pestaña **Play** sin reiniciar la partida.
+  juego desde **Jugar con amigos** sin reiniciar la partida.
 
 Esto reproduce `tC()`/`zS()` del cliente de escritorio.
 
@@ -437,7 +437,7 @@ go build -trimpath -o coop-loader ./cmd/coop-loader
 ./coop-loader
 ```
 
-Pestaña **Play**:
+**Jugar con amigos** (botón de la barra superior):
 
 1. **Host a game** → aparece un código; se copia solo.
 2. El amigo abre **Join a game**, escribe el código y pulsa **Join**.

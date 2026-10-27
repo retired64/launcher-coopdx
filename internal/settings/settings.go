@@ -22,6 +22,8 @@ type Consent struct {
 type Settings struct {
 	// GamePath is the folder that contains the sm64coopdx executable.
 	GamePath string `json:"gamePath"`
+	// ROMPath is the Super Mario 64 (USA) file the look was read from.
+	ROMPath string `json:"romPath,omitempty"`
 	// CloseOnPlay quits the loader when the game starts from the Mods tab.
 	CloseOnPlay bool `json:"closeOnPlay"`
 	// Profile is the last active mod profile.

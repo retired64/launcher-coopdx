@@ -1,192 +1,291 @@
 <!doctype html>
-<html lang="en">
+<html lang="es" data-view="mods">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Coop Loader</title>
+    <title>Coop Mod Loader</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <header class="top">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <div>
-          <h1>COOP LOADER</h1>
-          <p class="brand-sub">mods · saves · profiles</p>
+    <div class="app">
+      <nav class="rail" aria-label="Secciones">
+        <div class="wordmark" aria-label="Coop Mods">
+          <sm64-text text="COOP MODS"></sm64-text>
         </div>
-      </div>
-
-      <div class="top-status">
-        <span id="game-chip" class="chip">checking…</span>
-        <button id="session-pill" class="btn btn-sm session-pill" type="button" hidden></button>
-        <button id="play" class="btn btn-accent" type="button">Launch game</button>
-      </div>
-    </header>
-
-    <div class="shell">
-      <nav class="rail" aria-label="Sections">
-        <button class="rail-link" data-tab="play">Play</button>
-        <button class="rail-link" data-tab="copy">Copy</button>
-        <button class="rail-link" data-tab="mods" aria-current="page">Mods</button>
-        <button class="rail-link" data-tab="browse">Browse</button>
-        <button class="rail-link" data-tab="saves">Saves</button>
-        <button class="rail-link" data-tab="profiles">Profiles</button>
-        <button class="rail-link" data-tab="settings">Settings</button>
+        <div class="rail-panel">
+          <div class="rail-nav">
+            <span class="rail-marker" aria-hidden="true"></span>
+            <button class="rail-link" data-tab="mods" aria-current="page">
+              <span>Mis mods</span><span class="rail-count" id="mod-count">—</span>
+            </button>
+            <button class="rail-link" data-tab="browse">Buscar</button>
+            <button class="rail-link" data-tab="player">Jugador</button>
+            <button class="rail-link" data-tab="saves">Partidas</button>
+            <button class="rail-link" data-tab="create">Crear</button>
+            <button class="rail-link" data-tab="settings">Opciones</button>
+          </div>
+        </div>
         <div class="rail-foot">
           <span id="version">v—</span>
         </div>
       </nav>
 
-      <main class="view">
-        <section class="tab" id="tab-play" hidden>
-          <div class="toolbar">
-            <h2>Play with friends</h2>
+      <main class="workspace">
+        <header class="topbar">
+          <sm64-text id="page-title" class="page-title" text="MIS MODS"></sm64-text>
+          <div class="topbar-end">
+            <span id="game-chip" class="game-card" hidden></span>
+            <button id="session-pill" class="btn session-pill" type="button" hidden></button>
+            <button id="friends" class="btn" type="button">Jugar con amigos</button>
+            <button id="play" class="btn btn-primary btn-launch" type="button">Jugar</button>
+          </div>
+        </header>
+
+        <div class="view">
+          <section class="tab" id="tab-play" hidden>
+            <button class="btn btn-sm back-to-mods" type="button">← Volver</button>
             <span id="session-chip" class="chip" hidden></span>
-          </div>
-          <p class="hint">
-            You don't need the same mods installed: when your friend joins, their
-            game downloads the host's active mods before entering. The loader
-            connects the two games directly when it can, through the relay when it
-            cannot.
-          </p>
-          <div id="session-panel" class="session-panel"></div>
-          <details class="card session-log-card" id="session-log-card">
-            <summary>Connection log</summary>
             <p class="hint">
-              Peer ids are shortened. The room code and the SDPs are never
-              written here.
+              No hace falta tener los mismos mods: al unirse, el juego del amigo
+              descarga los mods activos del anfitrión antes de entrar. El loader
+              conecta los dos juegos directo cuando puede y por el relé cuando no.
             </p>
-            <pre id="session-log" class="session-log">Open a session to see the log.</pre>
-          </details>
-        </section>
+            <div id="session-panel" class="session-panel"></div>
+            <details class="card session-log-card" id="session-log-card">
+              <summary>Registro de conexión</summary>
+              <p class="hint">
+                Los identificadores salen acortados. El código de sala y los SDP
+                nunca se escriben aquí.
+              </p>
+              <pre id="session-log" class="session-log">Abre una sesión para ver el registro.</pre>
+            </details>
+          </section>
 
-        <section class="tab" id="tab-copy" hidden>
-          <div class="toolbar">
-            <h2>Copy between devices</h2>
+          <section class="tab" id="tab-copy" hidden>
+            <button class="btn btn-sm back-to-mods" type="button">← Volver</button>
             <span id="copy-chip" class="chip" hidden></span>
-          </div>
-          <p class="hint">
-            Your mods, your look (name, character, colours) and your saves.
-            Open the loader on both devices; one shows a code and the other types it.
-          </p>
-          <div id="copy-panel" class="copy-panel"></div>
-          <details class="card session-log-card" id="copy-log-card">
-            <summary>Copy log</summary>
             <p class="hint">
-              Short device names, connection route and file counts. The code and
-              file contents are never written here.
+              Tus mods, tu aspecto (nombre, personaje y colores) y tus partidas.
+              Abre el loader en los dos dispositivos; uno muestra un código y el
+              otro lo escribe.
             </p>
-            <pre id="copy-log" class="session-log">Open a copy to see the log.</pre>
-          </details>
-        </section>
+            <div id="copy-panel" class="copy-panel"></div>
+            <details class="card session-log-card" id="copy-log-card">
+              <summary>Registro de la copia</summary>
+              <p class="hint">
+                Nombres cortos, ruta de conexión y cantidad de archivos. El código
+                y el contenido de los archivos nunca se escriben aquí.
+              </p>
+              <pre id="copy-log" class="session-log">Abre una copia para ver el registro.</pre>
+            </details>
+          </section>
 
-        <section class="tab" id="tab-mods">
-          <div class="toolbar">
-            <h2>Mods</h2>
-            <div class="toolbar-actions">
-              <input id="filter" class="input" type="search" placeholder="Filter…" />
-              <label class="btn" for="install-file">Install from file…</label>
-              <input id="install-file" type="file" accept=".zip,.lua,.luac" hidden />
+          <section class="tab" id="tab-mods">
+            <div class="toolbar mods-toolbar">
+              <input id="filter" class="field field-search" type="search" placeholder="Buscar" aria-label="Buscar en tus mods" />
+              <div class="seg" role="group" aria-label="Ver">
+                <span class="label">Ver</span>
+                <button type="button" data-mod-filter="all" aria-pressed="true">Todos</button>
+                <button type="button" data-mod-filter="on" aria-pressed="false">Activos</button>
+                <button type="button" data-mod-filter="off" aria-pressed="false">Inactivos</button>
+              </div>
+              <div class="toolbar-end">
+                <label class="profile-pick">
+                  <span class="label">Perfil</span>
+                  <select id="profile-select" class="field" aria-label="Perfil de mods"></select>
+                </label>
+                <button id="profile-manage" class="btn btn-sm" type="button" aria-label="Administrar perfiles">…</button>
+                <label class="btn btn-sm" for="install-file">Instalar</label>
+                <input id="install-file" type="file" accept=".zip,.lua,.luac" hidden />
+              </div>
             </div>
-          </div>
-          <p class="hint" id="mods-hint"></p>
-          <div id="mods-list" class="list"></div>
-        </section>
+            <p class="hint" id="mods-hint"></p>
+            <div id="mods-list" class="groups"></div>
+          </section>
 
-        <section class="tab" id="tab-browse" hidden>
-          <div class="toolbar">
-            <h2>Browse</h2>
-            <div class="toolbar-actions">
-              <input id="browse-q" class="input" type="search" placeholder="Search the mod site…" />
-              <select id="browse-sort" class="input" aria-label="Sort by">
-                <option value="downloads">Most downloaded</option>
-                <option value="rating">Best rated</option>
-                <option value="updated">Recently updated</option>
-                <option value="newest">Newest</option>
-              </select>
-              <select id="browse-cat" class="input" aria-label="Category">
-                <option value="0">All categories</option>
-              </select>
-              <button id="browse-refresh" class="btn" type="button">Refresh</button>
-            </div>
-          </div>
-          <p class="hint" id="browse-hint">Mods come from mods.sm64coopdx.com. The loader asks before installing.</p>
-          <div id="browse-list" class="browse-list"></div>
-          <div class="browse-more">
-            <button id="browse-more" class="btn" type="button" hidden>Load more</button>
-          </div>
-        </section>
-
-        <section class="tab" id="tab-saves" hidden>
-          <div class="toolbar">
-            <h2>Saves</h2>
-            <div class="toolbar-actions">
-              <label class="btn" for="save-file">Import save…</label>
-              <input id="save-file" type="file" accept=".bin,.eep,.sav" hidden />
-            </div>
-          </div>
-          <p class="hint">
-            Four slots, read straight from <code>sm64_save_file.bin</code>. The loader keeps a
-            backup next to it before the first change.
-          </p>
-          <div id="saves-grid" class="saves"></div>
-        </section>
-
-        <section class="tab" id="tab-profiles" hidden>
-          <div class="toolbar">
-            <h2>Profiles</h2>
-            <div class="toolbar-actions">
-              <input id="profile-name" class="input" type="text" maxlength="40" placeholder="New profile…" />
-              <button id="profile-create" class="btn" type="button">Create</button>
-            </div>
-          </div>
-          <p class="hint">A profile is a saved set of enabled mods.</p>
-          <div id="profiles-list" class="list"></div>
-        </section>
-
-        <section class="tab" id="tab-settings" hidden>
-          <div class="toolbar"><h2>Settings</h2></div>
-
-          <div class="card">
-            <h3>Game folder</h3>
-            <p class="hint">The folder that contains <code>sm64coopdx</code>.</p>
-            <div class="row">
-              <input id="game-path" class="input grow" type="text" spellcheck="false" />
-              <button id="game-save" class="btn" type="button">Save</button>
-              <button id="game-detect" class="btn" type="button">Detect</button>
-            </div>
-            <p class="state" id="game-state"></p>
-          </div>
-
-          <div class="card">
-            <h3>Behaviour</h3>
-            <label class="row row-between">
-              <span>Close the loader when the game starts</span>
-              <span class="switch">
-                <input id="close-on-play" type="checkbox" />
-                <span class="knob" aria-hidden="true"></span>
+          <section class="tab" id="tab-browse" hidden>
+            <div class="notice teal" id="browse-notice">
+              <span>
+                Los mods los hacen fans y ejecutan código dentro de tu juego.
+                Instala solo mods de autores en los que confíes.
               </span>
-            </label>
-          </div>
+              <button id="browse-ok" class="btn btn-sm" type="button">Entendido</button>
+            </div>
+            <div class="toolbar browse-toolbar">
+              <input id="browse-q" class="field field-search" type="search" placeholder="Buscar mods" aria-label="Buscar en el sitio de mods" />
+              <label class="select-pick">
+                <span class="label">Orden</span>
+                <select id="browse-sort" class="field" aria-label="Ordenar por">
+                  <option value="downloads">Más descargados</option>
+                  <option value="rating">Mejor valorados</option>
+                  <option value="updated">Actualizados</option>
+                  <option value="newest">Nuevos</option>
+                </select>
+              </label>
+              <label class="select-pick">
+                <span class="label">Categoría</span>
+                <select id="browse-cat" class="field" aria-label="Categoría">
+                  <option value="0">Todos</option>
+                </select>
+              </label>
+              <button id="browse-refresh" class="btn btn-sm" type="button">Actualizar</button>
+            </div>
+            <p class="hint" id="browse-hint">Los mods vienen de mods.sm64coopdx.com. El loader pregunta antes de instalar.</p>
+            <div id="browse-list" class="browse-list"></div>
+            <div class="browse-more">
+              <button id="browse-more" class="btn" type="button" hidden>Cargar más</button>
+            </div>
+          </section>
 
-          <div class="card">
-            <h3>Where things live</h3>
-            <dl class="paths">
-              <dt>Game data</dt><dd id="path-data"></dd>
-              <dt>Config</dt><dd id="path-config"></dd>
-              <dt>Save file</dt><dd id="path-save"></dd>
-              <dt>Loader</dt><dd id="path-loader"></dd>
-            </dl>
-          </div>
+          <section class="tab" id="tab-player" hidden>
+            <div id="player-panel"></div>
+          </section>
 
-          <div class="card">
-            <h3>About</h3>
-            <p class="hint">
-              Clean-room loader for SM64 Coop Deluxe. Not affiliated with Nintendo or the
-              sm64coopdx team. It reads your own game files; no game assets are bundled.
-            </p>
-          </div>
-        </section>
+          <section class="tab" id="tab-saves" hidden>
+            <div class="toolbar saves-toolbar">
+              <div class="toolbar-tabs" role="group" aria-label="Partidas">
+                <span class="label">Guardado</span>
+                <span class="caption">Se lee de <code>sm64_save_file.bin</code>.</span>
+              </div>
+              <div class="toolbar-end">
+                <label class="btn btn-sm" for="save-file">Importar…</label>
+                <input id="save-file" type="file" accept=".bin,.eep,.sav" hidden />
+              </div>
+            </div>
+            <div id="saves-grid" class="saves"></div>
+          </section>
+
+          <section class="tab" id="tab-create" hidden>
+            <div class="group">
+              <div class="group-head">
+                <h2 class="group-title">Haz tu propio mod</h2>
+                <span class="caption">Elige un punto de partida, pruébalo en el juego y empácalo para el sitio de mods.</span>
+              </div>
+              <div class="creator-intro">
+                <p>
+                  Haz tu propio mod. Elige un punto de partida, pruébalo en el juego
+                  y empácalo para el sitio de mods.
+                </p>
+                <div class="creator-actions">
+                  <button id="create-first" class="btn btn-install" type="button">Haz tu primer mod</button>
+                  <label class="btn" for="create-existing">Usar un mod que ya tengo</label>
+                  <input id="create-existing" type="file" accept=".zip,.lua,.luac" hidden />
+                </div>
+                <div id="create-panel"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab" id="tab-profiles" hidden>
+            <button class="btn btn-sm back-to-mods" type="button">← Volver</button>
+            <div class="toolbar">
+              <input id="profile-name" class="field" type="text" maxlength="40" placeholder="Perfil nuevo…" />
+              <button id="profile-create" class="btn btn-primary" type="button">Crear</button>
+            </div>
+            <p class="hint">Un perfil es un conjunto guardado de mods activos.</p>
+            <div id="profiles-list" class="list"></div>
+          </section>
+
+          <section class="tab" id="tab-settings" hidden>
+            <ul class="settings-list">
+              <li class="group">
+                <div class="group-head">
+                  <h2 class="group-title">Carpeta del juego</h2>
+                  <span class="caption">La carpeta que contiene <code>sm64coopdx</code>.</span>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-value" id="game-state">Sin configurar.</div>
+                  <div class="settings-actions">
+                    <button id="game-detect" class="btn" type="button">Detectar</button>
+                    <button id="game-save" class="btn" type="button">Guardar</button>
+                  </div>
+                </div>
+                <input id="game-path" class="field" type="text" spellcheck="false" aria-label="Carpeta del juego" />
+              </li>
+
+              <li class="group">
+                <div class="group-head">
+                  <h2 class="group-title">Estilo del juego</h2>
+                  <span class="caption" id="rom-state">Buscando tu ROM de Super Mario 64 (USA)…</span>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-value">
+                    Las imágenes y letras de la app se leen de tu propia ROM.
+                    Nada del juego viene incluido.
+                  </div>
+                  <div class="settings-actions">
+                    <label class="btn" for="rom-file">Usar otro archivo</label>
+                    <input id="rom-file" type="file" accept=".z64,.n64,.v64" hidden />
+                  </div>
+                </div>
+              </li>
+
+              <li class="group">
+                <div class="group-head">
+                  <h2 class="group-title">Idioma</h2>
+                  <span class="caption">La app usa el idioma de tu sistema. Cámbialo aquí.</span>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-value">Español</div>
+                  <div class="settings-actions">
+                    <span class="field lang-field">Español ▾</span>
+                  </div>
+                </div>
+              </li>
+
+              <li class="group">
+                <div class="group-head">
+                  <h2 class="group-title">Al apretar Jugar</h2>
+                  <span class="caption">Cerrar el loader le deja al juego toda tu memoria y tu tarjeta gráfica. Lo mejor con ray tracing o mods pesados.</span>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-value">Cerrar el loader o dejarlo abierto.</div>
+                  <label class="switch" title="Cerrar el loader al jugar">
+                    <input id="close-on-play" type="checkbox" />
+                    <span class="knob" aria-hidden="true"></span>
+                    <span class="switch-word" id="close-on-play-word">Cerrar el loader</span>
+                  </label>
+                </div>
+              </li>
+
+              <li class="group">
+                <div class="group-head">
+                  <h2 class="group-title">Tus otros dispositivos</h2>
+                  <span class="caption">Copia tus mods, tu aspecto y tus partidas guardadas hacia o desde otro computador o teléfono.</span>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-value">La copia va cifrada con un código de 8 letras.</div>
+                  <div class="settings-actions">
+                    <button id="open-copy" class="btn" type="button">Copiar entre dispositivos</button>
+                  </div>
+                </div>
+              </li>
+
+              <li class="group">
+                <div class="group-head">
+                  <h2 class="group-title">Dónde están las cosas</h2>
+                </div>
+                <dl class="paths">
+                  <dt>Datos del juego</dt><dd id="path-data"></dd>
+                  <dt>Configuración</dt><dd id="path-config"></dd>
+                  <dt>Partida</dt><dd id="path-save"></dd>
+                  <dt>Loader</dt><dd id="path-loader"></dd>
+                </dl>
+              </li>
+
+              <li class="group">
+                <div class="group-head">
+                  <h2 class="group-title">Acerca de</h2>
+                  <span class="caption">Coop Loader es un proyecto de fans, no hecho por Nintendo ni por el equipo de sm64coopdx.</span>
+                </div>
+                <p class="hint">
+                  El loader lee tus propios archivos del juego; no incluye ningún
+                  recurso de Nintendo. Los dibujos y las letras vienen de tu ROM.
+                </p>
+              </li>
+            </ul>
+          </section>
+        </div>
       </main>
     </div>
 
@@ -194,10 +293,10 @@
 
     <dialog id="copy-dialog" class="dialog">
       <form method="dialog">
-        <h3 id="copy-title">Copy save</h3>
+        <h3 id="copy-title">Copiar partida</h3>
         <div id="copy-targets" class="copy-targets"></div>
         <div class="dialog-actions">
-          <button class="btn" value="cancel">Cancel</button>
+          <button class="btn" value="cancel">Cancelar</button>
         </div>
       </form>
     </dialog>

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/retired64/coop-loader/internal/app"
 	"github.com/retired64/coop-loader/internal/game"
@@ -106,7 +107,7 @@ func TestStaticPageAndCSP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), "COOP LOADER") {
+	if !strings.Contains(string(body), "COOP MODS") {
 		t.Fatal("index.html was not served")
 	}
 	csp := resp.Header.Get("Content-Security-Policy")
@@ -311,4 +312,53 @@ type appCopyState struct {
 	Code     string `json:"code"`
 	Phase    string `json:"phase"`
 	Trackers int    `json:"trackers"`
+}
+
+func TestROMStatusAndBadUpload(t *testing.T) {
+	srv, _ := newTestServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	var last struct {
+		ROM struct {
+			Ready  bool   `json:"ready"`
+			Busy   bool   `json:"busy"`
+			Reason string `json:"reason"`
+		} `json:"rom"`
+	}
+	for i := 0; i < 50; i++ {
+		resp := do(t, http.MethodGet, ts.URL+"/api/rom/status", srv.Token(), "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d", resp.StatusCode)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&last); err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if !last.ROM.Busy {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if last.ROM.Ready {
+		t.Fatal("a test service with no ROM reported ready")
+	}
+	if last.ROM.Reason == "" {
+		t.Fatal("no reason for the missing ROM")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/rom/upload?name=bad.z64", strings.NewReader(string(make([]byte, 0x2000))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Token", srv.Token())
+	req.Header.Set("Content-Type", "application/octet-stream")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad upload = %d", resp.StatusCode)
+	}
 }

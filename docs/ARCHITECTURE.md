@@ -21,6 +21,7 @@ cmd/coop-loader        flags, salida por consola, servidor
                    ├── internal/installed   procedencia de lo instalado
                    ├── internal/session     sala, WebRTC y puente UDP
                    ├── internal/devicecopy  copy/v1: manifiesto y archivos
+                   ├── internal/rom         ROM USA: MIO0, texturas y fuentes
                    ├── internal/conf        sm64config.txt + perfiles
                    ├── internal/mods        listar, instalar, quitar
                    └── internal/eeprom      partida 512 B
@@ -257,6 +258,41 @@ Al aplicar, el servicio respeta las mismas garantías que el resto:
 
 El protocolo completo está en [COPY.md](COPY.md).
 
+## Aspecto desde la ROM
+
+`internal/rom` no habla con la red ni con la UI. Solo sabe leer la ROM USA que
+el juego necesita y convertir sus datos en archivos que el navegador entiende:
+
+```
+rom.go         SHA-1, orden de bytes, MIO0, texturas y nombres
+assets.go      offsets de los bloques y de cada textura/letra
+font.go        mapas de bits -> fuente TrueType con acentos
+executable.go  letras extra del HUD leídas del ELF/PE del juego
+```
+
+Flujo:
+
+1. `Find` prueba `settings.romPath`, `<datos>/baserom.us.z64` y
+   `<juego>/baserom.us.z64`.
+2. `Load` normaliza `.z64/.v64/.n64` y comprueba el SHA-1.
+3. `Extract` descomprime tres bloques MIO0, decodifica 16 texturas, 50 dibujos
+   del HUD, construye `dialog.ttf` y `menu.ttf`, y lee los nombres de niveles.
+4. Escribe todo en `<config>/coop-loader/rom-assets` y cambia la carpeta de
+   golpe, para no dejar una caché a medias.
+5. `app.Service` expone `ROMStatus`, `SetROMPath` y `UseROMBytes`; el servidor
+   traduce eso a `/api/rom/*` y sirve los archivos en `/rom-assets/`.
+
+La UI añade la clase `rom` a `<html>` cuando la caché está lista. Esa clase
+activa las maderas, las fuentes y los iconos; sin ella queda el tema sobrio.
+`<sm64-text>` dibuja los títulos con los PNG del HUD y cae a texto normal si no
+hay ROM.
+
+La extracción es opcional para el resto del loader: mods, partidas, perfiles,
+sesión y copia funcionan igual sin ella.
+
+Los detalles (offsets, formatos, límites y comparación píxel a píxel con una
+extracción de referencia) están en [THEME.md](THEME.md).
+
 ## Decisiones y porqués
 
 | Decisión | Motivo |
@@ -266,6 +302,8 @@ El protocolo completo está en [COPY.md](COPY.md).
 | Token por ejecución | cualquier web podría hacer POST a `localhost` sin él |
 | Respaldo + atómico + papelera | los datos del jugador son irrecuperables si se pierden |
 | Validar `main.lua` y checksum | el juego no valida lo que el loader escribe |
+| Extraer el tema de la ROM, no incluirlo | no se publican recursos de Nintendo y cada jugador usa su propia copia |
+| Caché + versión + huella del ejecutable | no se reextrae en cada arranque y se refresca si cambia el juego |
 | Sin borrar mods | un clic equivocado no debe costar una descarga de 300 MB |
 | Caché y pausa de 800 ms | no castigar el sitio con decenas de peticiones |
 | Descargar solo del sitio o GitHub | un enlace de un mod no debe poder traer un binario de cualquier host |

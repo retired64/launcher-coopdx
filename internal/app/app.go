@@ -72,6 +72,12 @@ type Service struct {
 	copyApplyMu sync.Mutex
 	copyEng     *devicecopy.Engine
 
+	romMu      sync.Mutex
+	romReady   bool
+	romBusy    bool
+	romChecked bool
+	romStatus  ROMStatus
+
 	configBackup sync.Once
 }
 

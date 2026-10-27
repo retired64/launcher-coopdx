@@ -298,10 +298,10 @@ El estado incluye `role`, `code`, `trackers`, `peer{name,kind}`, `route`,
 
 ## 11. UI
 
-Pestaña **Copy**:
+Se abre desde **Opciones → Copiar entre dispositivos**:
 
-- **Send from this computer** genera un código y lo muestra para copiarlo.
-- **Get from another device** pide el código.
+- **Enviar desde este computador** genera un código y lo muestra para copiarlo.
+- **Recibir de otro dispositivo** pide el código.
 - Consentimiento la primera vez (IP, trackers, relay, Lua del otro dispositivo).
 - Revisión con tres casillas: **Mods**, **Look**, **Saves**.
 - Resumen de mods añadidos/actualizados, bytes, cuáles quedarán activos, cuáles
@@ -331,9 +331,11 @@ Cubre:
 Manual:
 
 1. Abre el loader en dos dispositivos.
-2. En uno: **Copy → Send from this computer**.
-3. En el otro: **Copy → Get from another device**, escribe el código.
-4. Revisa y pulsa **Copy to this computer**.
+2. En uno: **Opciones → Copiar entre dispositivos → Enviar desde este
+   computador**.
+3. En el otro: **Copiar entre dispositivos → Recibir de otro dispositivo**,
+   escribe el código.
+4. Revisa y pulsa **Copiar a este computador**.
 5. Comprueba mods, aspecto y partidas. Lo reemplazado queda en
    `removed-by-coop-loader`.
 

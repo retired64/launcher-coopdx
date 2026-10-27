@@ -27,6 +27,7 @@ import (
 	"github.com/retired64/coop-loader/internal/eeprom"
 	"github.com/retired64/coop-loader/internal/game"
 	"github.com/retired64/coop-loader/internal/mods"
+	"github.com/retired64/coop-loader/internal/rom"
 	"github.com/retired64/coop-loader/internal/session"
 )
 
@@ -72,10 +73,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/saves/clear", s.wrap(s.clearSlot))
 	mux.HandleFunc("POST /api/saves/import", s.wrap(s.importSave))
 
+	mux.HandleFunc("POST /api/create/mod", s.wrap(s.createMod))
+	mux.HandleFunc("GET /api/player", s.wrap(s.playerState))
+	mux.HandleFunc("POST /api/player", s.wrap(s.setPlayer))
+	mux.HandleFunc("POST /api/player/preset", s.wrap(s.savePlayerPreset))
+	mux.HandleFunc("POST /api/player/preset/delete", s.wrap(s.deletePlayerPreset))
+
 	mux.HandleFunc("GET /api/profiles", s.wrap(s.listProfiles))
 	mux.HandleFunc("POST /api/profiles/switch", s.wrap(s.switchProfile))
 	mux.HandleFunc("POST /api/profiles/create", s.wrap(s.createProfile))
 	mux.HandleFunc("POST /api/profiles/delete", s.wrap(s.deleteProfile))
+
+	mux.HandleFunc("GET /api/rom/status", s.wrap(s.romStatus))
+	mux.HandleFunc("POST /api/rom/path", s.wrap(s.setROMPath))
+	mux.HandleFunc("POST /api/rom/upload", s.wrap(s.uploadROM))
+	mux.HandleFunc("GET /rom-assets/", s.romAsset)
 
 	mux.HandleFunc("POST /api/settings/gamepath", s.wrap(s.setGamePath))
 	mux.HandleFunc("POST /api/settings/closeonplay", s.wrap(s.setCloseOnPlay))
@@ -107,6 +119,64 @@ func (s *Server) Handler() http.Handler {
 }
 
 // --- handlers --------------------------------------------------------------
+
+func (s *Server) romStatus(w http.ResponseWriter, r *http.Request) error {
+	writeJSON(w, http.StatusOK, map[string]any{"rom": s.svc.ROMStatus()})
+	return nil
+}
+
+func (s *Server) setROMPath(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	st, err := s.svc.SetROMPath(strings.TrimSpace(in.Path))
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rom": st})
+	return nil
+}
+
+func (s *Server) uploadROM(w http.ResponseWriter, r *http.Request) error {
+	const maxSize = 64 << 20
+	body := http.MaxBytesReader(w, r.Body, maxSize)
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return badRequest(err)
+	}
+	if len(data) == 0 {
+		return badRequest(errors.New("the file is empty"))
+	}
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		name = "uploaded.z64"
+	}
+	st, err := s.svc.UseROMBytes(data, name)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rom": st})
+	return nil
+}
+
+func (s *Server) romAsset(w http.ResponseWriter, r *http.Request) {
+	rel := strings.TrimPrefix(r.URL.Path, "/rom-assets/")
+	if rel == "" || strings.Contains(rel, "..") || strings.ContainsRune(rel, '\\') {
+		http.NotFound(w, r)
+		return
+	}
+	root := s.svc.ROMDir()
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	if !strings.HasPrefix(full, root+string(filepath.Separator)) {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-cache")
+	http.ServeFile(w, r, full)
+}
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) error {
 	writeJSON(w, http.StatusOK, s.svc.Status())
@@ -367,6 +437,73 @@ func (s *Server) importSave(w http.ResponseWriter, r *http.Request) error {
 		return badRequest(err)
 	}
 	return s.svc.ImportSave(in.Path)
+}
+
+func (s *Server) createMod(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	name, err := s.svc.CreateMod(in.Name)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": name})
+	return nil
+}
+
+func (s *Server) playerState(w http.ResponseWriter, r *http.Request) error {
+	st, err := s.svc.Player()
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, st)
+	return nil
+}
+
+func (s *Server) setPlayer(w http.ResponseWriter, r *http.Request) error {
+	var in app.PlayerLook
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	st, err := s.svc.SetPlayer(in)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, st)
+	return nil
+}
+
+func (s *Server) savePlayerPreset(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	st, err := s.svc.SavePlayerPreset(in.Name)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, st)
+	return nil
+}
+
+func (s *Server) deletePlayerPreset(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	st, err := s.svc.DeletePlayerPreset(in.Name)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, st)
+	return nil
 }
 
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) error {
@@ -663,6 +800,10 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "session-active", err)
 	case errors.Is(err, devicecopy.ErrNoReview):
 		writeError(w, http.StatusConflict, "no-review", err)
+	case errors.Is(err, rom.ErrWrongROM):
+		writeError(w, http.StatusBadRequest, "wrong-rom", err)
+	case errors.Is(err, rom.ErrNoROM):
+		writeError(w, http.StatusNotFound, "no-rom", err)
 	case errors.Is(err, mods.ErrCompiled):
 		writeError(w, http.StatusConflict, "compiled", err)
 	case errors.Is(err, mods.ErrTooBig):
