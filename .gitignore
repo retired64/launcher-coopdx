@@ -1,0 +1,32 @@
+# Binaries and build output
+/coop-loader
+/coop-loader.exe
+/dist/
+/build/
+*.test
+*.out
+
+# Game files and personal data, never commit these.
+# Anchored to the repository root so package folders such as internal/mods
+# are not affected.
+/*.z64
+/*.n64
+/*.v64
+/baserom.*
+/rom-assets/
+/mods/
+/dynos/
+/palettes/
+/sav/
+/*.sav
+/sm64_save_file.bin
+/sm64config*.txt
+/saves.json
+/profiles.json
+/settings.json
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

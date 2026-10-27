@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Coop Loader</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <h1>COOP LOADER</h1>
+          <p class="brand-sub">mods · saves · profiles</p>
+        </div>
+      </div>
+
+      <div class="top-status">
+        <span id="game-chip" class="chip">checking…</span>
+        <button id="play" class="btn btn-accent" type="button">Play</button>
+      </div>
+    </header>
+
+    <div class="shell">
+      <nav class="rail" aria-label="Sections">
+        <button class="rail-link" data-tab="mods" aria-current="page">Mods</button>
+        <button class="rail-link" data-tab="saves">Saves</button>
+        <button class="rail-link" data-tab="profiles">Profiles</button>
+        <button class="rail-link" data-tab="settings">Settings</button>
+        <div class="rail-foot">
+          <span id="version">v—</span>
+        </div>
+      </nav>
+
+      <main class="view">
+        <section class="tab" id="tab-mods">
+          <div class="toolbar">
+            <h2>Mods</h2>
+            <div class="toolbar-actions">
+              <input id="filter" class="input" type="search" placeholder="Filter…" />
+              <label class="btn" for="install-file">Install from file…</label>
+              <input id="install-file" type="file" accept=".zip,.lua,.luac" hidden />
+            </div>
+          </div>
+          <p class="hint" id="mods-hint"></p>
+          <div id="mods-list" class="list"></div>
+        </section>
+
+        <section class="tab" id="tab-saves" hidden>
+          <div class="toolbar">
+            <h2>Saves</h2>
+            <div class="toolbar-actions">
+              <label class="btn" for="save-file">Import save…</label>
+              <input id="save-file" type="file" accept=".bin,.eep,.sav" hidden />
+            </div>
+          </div>
+          <p class="hint">
+            Four slots, read straight from <code>sm64_save_file.bin</code>. The loader keeps a
+            backup next to it before the first change.
+          </p>
+          <div id="saves-grid" class="saves"></div>
+        </section>
+
+        <section class="tab" id="tab-profiles" hidden>
+          <div class="toolbar">
+            <h2>Profiles</h2>
+            <div class="toolbar-actions">
+              <input id="profile-name" class="input" type="text" maxlength="40" placeholder="New profile…" />
+              <button id="profile-create" class="btn" type="button">Create</button>
+            </div>
+          </div>
+          <p class="hint">A profile is a saved set of enabled mods.</p>
+          <div id="profiles-list" class="list"></div>
+        </section>
+
+        <section class="tab" id="tab-settings" hidden>
+          <div class="toolbar"><h2>Settings</h2></div>
+
+          <div class="card">
+            <h3>Game folder</h3>
+            <p class="hint">The folder that contains <code>sm64coopdx</code>.</p>
+            <div class="row">
+              <input id="game-path" class="input grow" type="text" spellcheck="false" />
+              <button id="game-save" class="btn" type="button">Save</button>
+              <button id="game-detect" class="btn" type="button">Detect</button>
+            </div>
+            <p class="state" id="game-state"></p>
+          </div>
+
+          <div class="card">
+            <h3>Behaviour</h3>
+            <label class="row row-between">
+              <span>Close the loader when the game starts</span>
+              <span class="switch">
+                <input id="close-on-play" type="checkbox" />
+                <span class="knob" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
+
+          <div class="card">
+            <h3>Where things live</h3>
+            <dl class="paths">
+              <dt>Game data</dt><dd id="path-data"></dd>
+              <dt>Config</dt><dd id="path-config"></dd>
+              <dt>Save file</dt><dd id="path-save"></dd>
+              <dt>Loader</dt><dd id="path-loader"></dd>
+            </dl>
+          </div>
+
+          <div class="card">
+            <h3>About</h3>
+            <p class="hint">
+              Clean-room loader for SM64 Coop Deluxe. Not affiliated with Nintendo or the
+              sm64coopdx team. It reads your own game files; no game assets are bundled.
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <dialog id="copy-dialog" class="dialog">
+      <form method="dialog">
+        <h3 id="copy-title">Copy save</h3>
+        <div id="copy-targets" class="copy-targets"></div>
+        <div class="dialog-actions">
+          <button class="btn" value="cancel">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

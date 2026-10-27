@@ -1,0 +1,468 @@
+// Package server exposes the loader core to the local web UI.
+//
+// The server binds to loopback and demands a random per-run token on every API
+// call, so a random website cannot drive the loader through the browser.
+package server
+
+import (
+	"crypto/rand"
+	"crypto/subtle"
+	"embed"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/retired64/coop-loader/internal/app"
+	"github.com/retired64/coop-loader/internal/eeprom"
+	"github.com/retired64/coop-loader/internal/game"
+	"github.com/retired64/coop-loader/internal/mods"
+)
+
+//go:embed web
+var webFS embed.FS
+
+// Server wires the app service to HTTP.
+type Server struct {
+	svc   *app.Service
+	token string
+}
+
+// New returns a server with a fresh random token.
+func New(svc *app.Service) (*Server, error) {
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return nil, err
+	}
+	return &Server{svc: svc, token: hex.EncodeToString(buf)}, nil
+}
+
+// Token is the secret required by the API.
+func (s *Server) Token() string { return s.token }
+
+// Handler returns the HTTP tree.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /api/status", s.wrap(s.status))
+	mux.HandleFunc("GET /api/mods", s.wrap(s.listMods))
+	mux.HandleFunc("POST /api/mods/toggle", s.wrap(s.toggleMod))
+	mux.HandleFunc("POST /api/mods/remove", s.wrap(s.removeMod))
+	mux.HandleFunc("POST /api/mods/install", s.wrap(s.installMod))
+
+	mux.HandleFunc("GET /api/saves", s.wrap(s.listSaves))
+	mux.HandleFunc("POST /api/saves/copy", s.wrap(s.copySlot))
+	mux.HandleFunc("POST /api/saves/clear", s.wrap(s.clearSlot))
+	mux.HandleFunc("POST /api/saves/import", s.wrap(s.importSave))
+
+	mux.HandleFunc("GET /api/profiles", s.wrap(s.listProfiles))
+	mux.HandleFunc("POST /api/profiles/switch", s.wrap(s.switchProfile))
+	mux.HandleFunc("POST /api/profiles/create", s.wrap(s.createProfile))
+	mux.HandleFunc("POST /api/profiles/delete", s.wrap(s.deleteProfile))
+
+	mux.HandleFunc("POST /api/settings/gamepath", s.wrap(s.setGamePath))
+	mux.HandleFunc("POST /api/settings/closeonplay", s.wrap(s.setCloseOnPlay))
+	mux.HandleFunc("POST /api/game/detect", s.wrap(s.detectGame))
+	mux.HandleFunc("POST /api/game/launch", s.wrap(s.launchGame))
+
+	static, err := fs.Sub(webFS, "web")
+	if err != nil {
+		panic(err)
+	}
+	mux.Handle("/", http.FileServer(http.FS(static)))
+
+	return s.headers(mux)
+}
+
+// --- handlers --------------------------------------------------------------
+
+func (s *Server) status(w http.ResponseWriter, r *http.Request) error {
+	writeJSON(w, http.StatusOK, s.svc.Status())
+	return nil
+}
+
+func (s *Server) listMods(w http.ResponseWriter, r *http.Request) error {
+	list := s.svc.Mods()
+	if list == nil {
+		list = []mods.Mod{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"mods": list})
+	return nil
+}
+
+func (s *Server) toggleMod(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		ID   string    `json:"id"`
+		Kind mods.Kind `json:"kind"`
+		On   bool      `json:"on"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if in.Kind != mods.KindPack {
+		in.Kind = mods.KindMod
+	}
+	disabled, err := s.svc.Toggle(in.ID, in.Kind, in.On)
+	if err != nil {
+		return err
+	}
+	if disabled == nil {
+		disabled = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"disabled": disabled})
+	return nil
+}
+
+func (s *Server) removeMod(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		ID   string    `json:"id"`
+		Kind mods.Kind `json:"kind"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if in.Kind != mods.KindPack {
+		in.Kind = mods.KindMod
+	}
+	moved, err := s.svc.Remove(in.ID, in.Kind)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"moved": moved})
+	return nil
+}
+
+func (s *Server) installMod(w http.ResponseWriter, r *http.Request) error {
+	allow := false
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			return badRequest(err)
+		}
+		allow = r.FormValue("allowCompiled") == "true"
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			return badRequest(err)
+		}
+		defer file.Close()
+
+		tmp, err := os.CreateTemp("", "coop-loader-*"+safeExt(header.Filename))
+		if err != nil {
+			return err
+		}
+		tmpName := tmp.Name()
+		defer os.Remove(tmpName)
+		const maxUpload = 1 << 30
+		n, err := io.Copy(tmp, io.LimitReader(file, maxUpload+1))
+		if err != nil {
+			tmp.Close()
+			return err
+		}
+		if n > maxUpload {
+			tmp.Close()
+			return badRequest(errors.New("that file is bigger than 1 GiB"))
+		}
+		if err := tmp.Close(); err != nil {
+			return err
+		}
+		installed, err := s.svc.Install(tmpName, allow)
+		if err != nil {
+			return err
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"installed": installed})
+		return nil
+	}
+
+	var in struct {
+		Path          string `json:"path"`
+		AllowCompiled bool   `json:"allowCompiled"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	installed, err := s.svc.Install(in.Path, in.AllowCompiled)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"installed": installed})
+	return nil
+}
+
+func (s *Server) listSaves(w http.ResponseWriter, r *http.Request) error {
+	state, err := s.svc.Saves()
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, state)
+	return nil
+}
+
+func (s *Server) copySlot(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		From int `json:"from"`
+		To   int `json:"to"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if in.From < 0 || in.From >= eeprom.SlotCount || in.To < 0 || in.To >= eeprom.SlotCount {
+		return badRequest(errors.New("slot out of range"))
+	}
+	return s.svc.CopySlot(in.From, in.To)
+}
+
+func (s *Server) clearSlot(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Slot int `json:"slot"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if in.Slot < 0 || in.Slot >= eeprom.SlotCount {
+		return badRequest(errors.New("slot out of range"))
+	}
+	return s.svc.ClearSlot(in.Slot)
+}
+
+func (s *Server) importSave(w http.ResponseWriter, r *http.Request) error {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			return badRequest(err)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			return badRequest(err)
+		}
+		defer file.Close()
+		tmp, err := os.CreateTemp("", "coop-loader-save-*")
+		if err != nil {
+			return err
+		}
+		tmpName := tmp.Name()
+		defer os.Remove(tmpName)
+		if _, err := io.Copy(tmp, io.LimitReader(file, eeprom.FileSize+1)); err != nil {
+			tmp.Close()
+			return err
+		}
+		if err := tmp.Close(); err != nil {
+			return err
+		}
+		return s.svc.ImportSave(tmpName)
+	}
+	var in struct {
+		Path string `json:"path"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	return s.svc.ImportSave(in.Path)
+}
+
+func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) error {
+	profiles, err := s.svc.Profiles()
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"active": profiles.Active,
+		"names":  profiles.Names(),
+		"sets":   profiles.Sets,
+	})
+	return nil
+}
+
+func (s *Server) switchProfile(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	return s.svc.SwitchProfile(in.Name)
+}
+
+func (s *Server) createProfile(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	return s.svc.CreateProfile(in.Name)
+}
+
+func (s *Server) deleteProfile(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	return s.svc.DeleteProfile(in.Name)
+}
+
+func (s *Server) setGamePath(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if err := s.svc.SetGamePath(in.Path); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, s.svc.Status())
+	return nil
+}
+
+func (s *Server) setCloseOnPlay(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		On bool `json:"on"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	return s.svc.SetCloseOnPlay(in.On)
+}
+
+func (s *Server) detectGame(w http.ResponseWriter, r *http.Request) error {
+	path := s.svc.DetectGame()
+	writeJSON(w, http.StatusOK, map[string]any{"gamePath": path, "gameFound": path != ""})
+	return nil
+}
+
+func (s *Server) launchGame(w http.ResponseWriter, r *http.Request) error {
+	if err := s.svc.Launch(nil); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return nil
+}
+
+// --- middleware ------------------------------------------------------------
+
+func (s *Server) headers(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("X-Frame-Options", "DENY")
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Content-Security-Policy", "default-src 'none'")
+		} else {
+			w.Header().Set("Content-Security-Policy",
+				"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) wrap(h func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := localHost(r); err != nil {
+			writeError(w, http.StatusForbidden, "forbidden", err)
+			return
+		}
+		if err := s.checkToken(r); err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", err)
+			return
+		}
+		if err := h(w, r); err != nil {
+			s.fail(w, err)
+		}
+	}
+}
+
+func (s *Server) checkToken(r *http.Request) error {
+	got := r.Header.Get("X-Token")
+	if got == "" {
+		got = r.URL.Query().Get("token")
+	}
+	if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
+		return errors.New("bad or missing token")
+	}
+	return nil
+}
+
+func (s *Server) fail(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, app.ErrGameRunning):
+		writeError(w, http.StatusConflict, "game-running", err)
+	case errors.Is(err, app.ErrNoConfig):
+		writeError(w, http.StatusConflict, "no-config", err)
+	case errors.Is(err, game.ErrNotFound):
+		writeError(w, http.StatusBadRequest, "game-not-found", err)
+	case errors.Is(err, mods.ErrCompiled):
+		writeError(w, http.StatusConflict, "compiled", err)
+	case errors.Is(err, mods.ErrTooBig):
+		writeError(w, http.StatusRequestEntityTooLarge, "too-big", err)
+	case errors.Is(err, mods.ErrNoMods):
+		writeError(w, http.StatusUnprocessableEntity, "no-mods", err)
+	default:
+		var he httpError
+		if errors.As(err, &he) {
+			writeError(w, he.status, "bad-request", err)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "error", err)
+	}
+}
+
+// --- helpers ---------------------------------------------------------------
+
+func localHost(r *http.Request) error {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	switch strings.ToLower(host) {
+	case "127.0.0.1", "localhost", "::1":
+		return nil
+	default:
+		return fmt.Errorf("unexpected host %q", host)
+	}
+}
+
+type httpError struct {
+	status int
+	msg    string
+}
+
+func (e httpError) Error() string { return e.msg }
+
+func badRequest(err error) error { return httpError{status: http.StatusBadRequest, msg: err.Error()} }
+
+func readJSON(r *http.Request, v any) error {
+	defer r.Body.Close()
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, code string, err error) {
+	writeJSON(w, status, map[string]any{"error": err.Error(), "code": code})
+}
+
+func safeExt(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	switch ext {
+	case ".zip", ".lua", ".luac":
+		return ext
+	default:
+		return ".zip"
+	}
+}
