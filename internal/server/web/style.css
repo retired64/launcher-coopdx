@@ -67,7 +67,17 @@
   --bevel: calc(var(--px) * 2);
   --shadow-hard: 0 var(--bevel) 0 var(--color-shadow);
   --ease-out: cubic-bezier(.2, .8, .2, 1);
-  --dur-fast: .11s;
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(.4, 0, .6, 1);
+  --dur: .28s;
+  --dur-fast: .14s;
+  --spring: cubic-bezier(.22, 1.3, .36, 1);
+  --spring: linear(0, .03, .106, .21, .328, .449, .565, .671, .764, .843, .907, .957, .995, 1.022, 1.04, 1.05, 1.054, 1.054, 1.051, 1.046, 1.04, 1.033, 1.027, 1.02, 1.015, 1.01, 1);
+  --spring-soft: cubic-bezier(.2, .8, .2, 1);
+  --spring-soft: linear(0, .018, .064, .128, .202, .282, .362, .44, .513, .582, .644, .699, .749, .792, .829, .861, .888, .911, .93, .946, .959, .969, .978, .984, .99, .994, 1);
+  --drawer: .44s;
+  --drawer-step: 40ms;
+  interpolate-size: allow-keywords;
 }
 
 html[data-view="mods"],
@@ -212,27 +222,29 @@ html.rom .rail {
   text-align: left;
   font-size: var(--text);
 }
-.rail-link:hover { background: rgba(255, 255, 255, .1); }
-.rail-link[aria-current="page"] {
-  background: var(--color-box-hi);
+.rail-link {
+  transition:
+    translate .32s var(--spring-soft),
+    scale .2s var(--spring),
+    color var(--dur-fast) var(--ease-out);
+}
+.rail-link:hover:not([aria-current="page"]) {
+  translate: calc(var(--px) * 2) 0;
   color: var(--color-accent);
 }
-.rail-link[aria-current="page"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: var(--space-1);
-  bottom: var(--space-1);
-  width: var(--bevel);
-  background: var(--color-accent);
+.rail-link:active { scale: .97; }
+.rail-link[aria-current="page"] {
+  background: none;
+  color: var(--color-accent);
 }
+.rail-link[aria-current="page"]::before { content: none; }
 .rail-count {
-  min-width: calc(var(--px) * 14);
-  padding: 0 var(--space-1);
-  background: var(--color-box-hi);
-  color: var(--color-faint);
-  text-align: center;
-  font-size: calc(var(--px) * 12);
+  min-width: 0;
+  padding: 0;
+  background: none;
+  color: var(--color-muted);
+  text-align: right;
+  font-size: calc(var(--px) * 14);
 }
 .rail-foot {
   margin-top: auto;
@@ -314,15 +326,27 @@ p { margin: 0; }
   white-space: nowrap;
   font-size: calc(var(--px) * 14);
   line-height: 1;
+  transition:
+    translate .34s var(--spring),
+    box-shadow var(--dur-fast) var(--ease-out),
+    filter var(--dur-fast) var(--ease-out),
+    background-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out);
 }
 html.rom .btn { background: var(--tex-marble-dark) center / 96px 96px; }
-.btn:hover:not(:disabled) { filter: brightness(1.15); }
+.btn:hover:not(:disabled) {
+  translate: 0 calc(var(--px) * -1);
+  filter: brightness(1.15);
+}
 .btn:active:not(:disabled) {
-  transform: translateY(var(--bevel));
+  translate: 0 var(--bevel);
+  transform: none;
+  transition-duration: 60ms, 60ms, 60ms, 60ms, 60ms;
   box-shadow:
     inset var(--bevel) var(--bevel) 0 var(--color-bevel-lo),
     inset calc(var(--bevel) * -1) calc(var(--bevel) * -1) 0 var(--color-bevel-hi);
 }
+.btn-primary:hover:not(:disabled) { animation: nudge .34s var(--spring); }
 .btn:disabled { opacity: .55; filter: saturate(.4); cursor: default; }
 .btn-primary { background: var(--color-go); }
 html.rom .btn-primary { background: var(--tex-wood-green) center / 128px 128px; }
@@ -419,6 +443,10 @@ textarea.field, textarea.input { padding: var(--space-2); resize: vertical; }
   border: var(--px) solid var(--color-shadow);
   background: #4a4a4a;
   box-shadow: inset var(--bevel) var(--bevel) 0 rgba(255, 255, 255, .2);
+  transition:
+    background-color var(--dur) var(--ease-out),
+    scale .2s var(--spring),
+    filter var(--dur-fast) var(--ease-out);
 }
 .switch .knob::after {
   content: "";
@@ -426,8 +454,15 @@ textarea.field, textarea.input { padding: var(--space-2); resize: vertical; }
   inset: calc(var(--px) * 1);
   background: #b7b7b7 url("/rom-assets/textures/mario_head_gray.png") center / contain no-repeat;
   image-rendering: pixelated;
+  transition: transform .42s var(--spring), opacity var(--dur-fast) var(--ease-out);
 }
-.switch input:checked + .knob { background: #2f9f3d; }
+.switch:hover .knob { filter: brightness(1.12); }
+.switch:active .knob { scale: 1.08 .92; }
+.switch input:checked + .knob {
+  background: #2f9f3d;
+  animation: switch-pop .42s var(--spring);
+}
+.switch input:checked + .knob::after { transform: scale(1.12); }
 .switch input:checked + .knob::after {
   background-image: url("/rom-assets/hud/mario.png");
   image-rendering: pixelated;
@@ -467,6 +502,9 @@ textarea.field, textarea.input { padding: var(--space-2); resize: vertical; }
   padding-left: var(--space-3);
   border-left: var(--px) solid var(--color-rule);
   color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: calc(var(--px) * 12);
+  line-height: calc(var(--px) * 15);
 }
 .group-count { color: var(--color-accent); }
 
@@ -476,9 +514,13 @@ textarea.field, textarea.input { padding: var(--space-2); resize: vertical; }
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-top: var(--px) solid var(--color-rule);
+  transition: background-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
 }
 .item:first-child { border-top: 0; }
-.item:hover { background: rgba(255, 255, 255, .07); }
+.item:hover { background: rgba(255, 255, 255, .1); }
+.item:active { background: rgba(255, 255, 255, .16); transition-duration: 0ms; }
+.item-main { transition: translate .32s var(--spring-soft); }
+.item:hover .item-main { translate: calc(var(--px) * 2) 0; }
 .item.off { opacity: .78; }
 .item-main { min-width: 0; }
 .item-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
@@ -738,7 +780,7 @@ textarea.field, textarea.input { padding: var(--space-2); resize: vertical; }
 .settings-value { flex: 1; min-width: 0; color: var(--color-muted); font-size: calc(var(--px) * 14); line-height: calc(var(--px) * 17); overflow-wrap: anywhere; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); flex: none; }
 .settings-list .field { width: 100%; }
-.settings-list .group > .field { margin: 0 var(--space-3) var(--space-3); width: calc(100% - var(--space-6)); }
+.settings-list .acc-inner > .field { margin: 0 var(--space-3) var(--space-3); width: calc(100% - var(--space-6)); }
 .lang-field { display: inline-flex; align-items: center; justify-content: space-between; width: calc(var(--px) * 120); }
 .paths { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3); padding: var(--space-3); margin: 0; font-size: calc(var(--px) * 13); }
 .paths dt { color: var(--color-faint); }
@@ -818,6 +860,10 @@ textarea.field, textarea.input { padding: var(--space-2); resize: vertical; }
 }
 .toast.ok { border-color: var(--color-go); }
 .toast.bad { border-color: var(--color-danger); }
+.toast:not([hidden]) { animation: toast-rise .52s var(--spring) both; }
+.dialog[open] { animation: dialog-drop .56s var(--spring) both; }
+.dialog::backdrop { animation: fade-in .2s var(--ease-out) both; }
+:focus-visible { animation: focus-in .32s var(--spring); }
 
 /* ---------- small screens --------------------------------------------------- */
 
@@ -874,7 +920,28 @@ textarea.field, textarea.input { padding: var(--space-2); resize: vertical; }
 .chip.bad { color: #ff9f93; }
 .chip.busy { color: var(--color-accent); }
 
-.rail-marker { display: none; }
+.rail-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 100%;
+  height: var(--marker-h, 0);
+  translate: 0 var(--marker-y, 0);
+  background: var(--color-box-hi);
+  pointer-events: none;
+  transition: translate .52s var(--spring), height .26s var(--spring-soft);
+}
+.rail-marker::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--space-1);
+  bottom: var(--space-1);
+  width: var(--bevel);
+  background: var(--color-accent);
+}
+.rail-marker.is-still { transition: none; }
 .item.is-on { background: rgba(80, 180, 70, .2); }
 .item.is-on .item-title strong { color: #d9ffc7; }
 .item .btn-sm { flex: none; }
@@ -920,8 +987,11 @@ html:not(.rom) .save-row.is-new .save-face,
 html:not(.rom) .save-face.is-new { background: #65696f; }
 
 .settings-list .group-head { background: var(--color-box-hi); }
-.settings-list .group > .group-head { border-bottom: 0; }
-.settings-list .group > .group-head + .settings-row { border-top: 0; }
+.settings-list .group-head.acc-head { width: 100%; }
+.acc.is-open > .acc-head { box-shadow: inset var(--bevel) 0 0 var(--color-accent); }
+.settings-list .acc-inner > .settings-row:first-child { border-top: 0; }
+.settings-list .acc-inner > .paths:first-child { border-top: 0; }
+.settings-list .acc-inner > .hint:first-child { padding-top: var(--space-3); }
 .settings-list .paths { border-top: var(--px) solid var(--color-rule); }
 .settings-list .lang-field { justify-content: flex-start; gap: var(--space-2); }
 .settings-list .switch { min-height: calc(var(--px) * 22); padding: 0 var(--space-2); background: rgba(0, 0, 0, .4); }
@@ -947,12 +1017,17 @@ html:not(.rom) .save-face.is-new { background: #65696f; }
 
 /* Without a ROM, keep the fallback text on one line and do not request the
    missing pictures. */
+html:not(.rom) {
+  --font-display: "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "Trebuchet MS", system-ui, sans-serif;
+  --font-caption: "Trebuchet MS", system-ui, sans-serif;
+}
 html:not(.rom) body,
 html:not(.rom) button,
 html:not(.rom) input,
 html:not(.rom) select,
 html:not(.rom) textarea {
-  font-family: "Trebuchet MS", system-ui, sans-serif;
+  font-family: var(--font-body);
 }
 html:not(.rom) .label,
 html:not(.rom) .group-title,
@@ -975,4 +1050,199 @@ html.rom [role="switch"] {
 html.rom input,
 html.rom textarea {
   cursor: text;
+}
+html.rom button:active,
+html.rom a:active,
+html.rom [role="switch"]:active {
+  cursor: url("/rom-assets/textures/hand_point@2x.png") 14 10, pointer;
+}
+.seg button {
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), scale .18s var(--spring);
+}
+.seg button:hover { color: var(--color-ink); }
+.seg button:active { scale: .96; }
+
+
+/* ---------- motion: the little moves the game screens make ----------------- */
+
+@keyframes drawer-in {
+  0% { transform: translate(-100%); animation-timing-function: cubic-bezier(.3, 0, .9, .6); }
+  62% { transform: translate(0); animation-timing-function: cubic-bezier(.2, .6, .4, 1); }
+  78% { transform: translate(calc(var(--px) * -8)); animation-timing-function: cubic-bezier(.6, 0, .8, .4); }
+  90% { transform: translate(0); animation-timing-function: cubic-bezier(.2, .6, .4, 1); }
+  95% { transform: translate(calc(var(--px) * -2)); animation-timing-function: cubic-bezier(.6, 0, .8, .4); }
+  to { transform: translate(0); }
+}
+@keyframes letter-in {
+  0% { opacity: 0; transform: translateY(calc(var(--title-px) * -6)) scale(.6); }
+  60% { opacity: 1; transform: translateY(calc(var(--title-px) * 1)) scale(1.05); }
+  to { transform: none; }
+}
+@keyframes nudge {
+  30% { translate: 0 calc(var(--px) * -2); }
+  70% { translate: 0 calc(var(--px) * 1); }
+}
+@keyframes switch-pop {
+  0% { scale: .92; }
+  60% { scale: 1.06; }
+  to { scale: 1; }
+}
+@keyframes toast-rise {
+  0% { opacity: 0; transform: translateY(calc(var(--px) * 10)); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dialog-drop {
+  0% { opacity: 0; translate: 0 calc(var(--px) * -60); }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes fade-in {
+  0% { opacity: 0; }
+}
+@keyframes focus-in {
+  0% { outline-offset: calc(var(--px) * 5); }
+}
+@keyframes boot-drop {
+  0% { translate: 0 calc(var(--px) * -40); opacity: 0; }
+  100% { translate: 0 0; opacity: 1; }
+}
+@keyframes marker-in {
+  0% { scale: 1 0; }
+}
+@keyframes push-in {
+  0% { translate: calc(var(--px) * -40) 0; opacity: 0; }
+}
+
+/* Boot: the rail and the top buttons drop in, like the reference client. */
+html.booting .rail-nav > .rail-link {
+  animation: drawer-in var(--drawer) linear both;
+}
+html.booting .rail-nav > .rail-link:nth-child(2) { animation-delay: 0ms; }
+html.booting .rail-nav > .rail-link:nth-child(3) { animation-delay: var(--drawer-step); }
+html.booting .rail-nav > .rail-link:nth-child(4) { animation-delay: calc(var(--drawer-step) * 2); }
+html.booting .rail-nav > .rail-link:nth-child(5) { animation-delay: calc(var(--drawer-step) * 3); }
+html.booting .rail-nav > .rail-link:nth-child(6) { animation-delay: calc(var(--drawer-step) * 4); }
+html.booting .rail-nav > .rail-link:nth-child(7) { animation-delay: calc(var(--drawer-step) * 5); }
+html.booting .rail-marker { animation: marker-in .52s var(--spring) .2s both; }
+html.booting .topbar-end > * {
+  animation: boot-drop .62s var(--spring) both;
+}
+html.booting .topbar-end > :nth-child(2) { animation-delay: 60ms; }
+html.booting .topbar-end > :nth-child(3) { animation-delay: 120ms; }
+html.booting .topbar-end > :nth-child(4) { animation-delay: 180ms; }
+html.booting .wordmark sm64-text .sm64-glyph {
+  animation: letter-in .36s var(--ease-out) both;
+}
+html.booting .wordmark sm64-text .sm64-glyph:nth-child(2) { animation-delay: 30ms; }
+html.booting .wordmark sm64-text .sm64-glyph:nth-child(3) { animation-delay: 60ms; }
+html.booting .wordmark sm64-text .sm64-glyph:nth-child(4) { animation-delay: 90ms; }
+html.booting .wordmark sm64-text .sm64-glyph:nth-child(5) { animation-delay: 120ms; }
+html.booting .wordmark sm64-text .sm64-glyph:nth-child(6) { animation-delay: 150ms; }
+html.booting .wordmark sm64-text .sm64-glyph:nth-child(7) { animation-delay: 180ms; }
+html.booting .wordmark sm64-text .sm64-glyph:nth-child(8) { animation-delay: 210ms; }
+html.booting .wordmark sm64-text .sm64-glyph:nth-child(9) { animation-delay: 240ms; }
+
+/* Page switch ghosts and the new page drawing itself in. */
+.ghosts {
+  position: fixed;
+  z-index: 20;
+  overflow: clip;
+  pointer-events: none;
+}
+.ghosts > .tab {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+}
+.tab.is-entering > * {
+  will-change: transform, clip-path;
+}
+
+/* Soft, game-like hover/active feedback on the browse and save cards. */
+.browse-item,
+.save-row,
+.preset,
+.swatch,
+.session-card,
+.copy-card,
+.step {
+  transition:
+    background-color var(--dur) var(--ease-out),
+    translate .32s var(--spring-soft),
+    box-shadow var(--dur) var(--ease-out);
+}
+.browse-item:hover,
+.session-card:hover,
+.copy-card:hover {
+  translate: 0 calc(var(--px) * -2);
+  box-shadow: 0 calc(var(--px) * 3) 0 var(--color-shadow);
+}
+.browse-item:active,
+.session-card:active,
+.copy-card:active { translate: 0 0; }
+.save-row:hover { translate: calc(var(--px) * 2) 0; }
+.preset:hover { translate: 0 calc(var(--px) * -2); }
+.preset:active { translate: 0 0; }
+
+/* Accordion: the group header from the reference design, but it opens. */
+.acc-head {
+  cursor: pointer;
+  flex-wrap: nowrap;
+  align-items: center;
+  border: 0;
+  border-bottom: var(--px) solid var(--color-rule);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.acc-head:hover { background: rgba(0, 0, 0, .84); }
+.acc-head:active { filter: brightness(.9); }
+.acc-arrow {
+  flex: none;
+  margin-left: auto;
+  width: 0;
+  height: 0;
+  border-left: calc(var(--px) * 3.5) solid transparent;
+  border-right: calc(var(--px) * 3.5) solid transparent;
+  border-top: calc(var(--px) * 4.5) solid var(--color-accent);
+  rotate: -90deg;
+  transition: rotate .32s var(--spring);
+}
+.acc.is-open > .acc-head .acc-arrow { rotate: 0deg; }
+.acc-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .42s var(--spring-soft);
+}
+.acc.is-open > .acc-body { grid-template-rows: 1fr; }
+.acc-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.acc-head .group-title {
+  flex: none;
+  white-space: nowrap;
+}
+.acc-head .caption {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+@media (max-width: 780px) {
+  .acc-head { flex-wrap: wrap; }
+  .acc-head .group-title { white-space: normal; }
+  .acc-head .caption { white-space: normal; }
+}
+.group.acc { overflow: clip; }
+.group.acc > .acc-body > .acc-inner > .item:first-child { border-top: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

@@ -30,6 +30,7 @@
     filter: "",
     modFilter: "all",
     expandedMods: new Set(),
+    collapsedGroups: new Set(),
     tab: "mods",
     rom: null,
     romBusy: false,
@@ -40,6 +41,7 @@
     playerPresetOpen: false,
     playerBusy: false,
     savePick: 0,
+    scroll: {},
     session: null,
     sessionKey: "",
     sessionBusy: false,
@@ -127,11 +129,171 @@
     profiles: { title: "PERFILES", view: "mods" },
   };
 
-  function setPage(name) {
+  const TAB_ORDER = ["mods", "browse", "player", "saves", "create", "settings", "play", "copy", "profiles"];
+  const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const reducedMotion = () => motionQuery.matches;
+
+  function setPage(name, animate = false) {
     const page = PAGES[name] || PAGES.mods;
     document.documentElement.dataset.view = page.view;
     const title = $("#page-title");
-    if (title) title.setAttribute("text", page.title);
+    if (!title) return;
+    if (!animate || reducedMotion() || !title.childElementCount) {
+      title.setAttribute("text", page.title);
+      return;
+    }
+    animateTitle(title, page.title);
+  }
+
+  function animateTitle(title, text) {
+    const token = (title._animToken || 0) + 1;
+    title._animToken = token;
+    const old = [...title.children];
+    old.forEach((node, i) => {
+      node.getAnimations().forEach((anim) => anim.cancel());
+      node.animate(
+        [{ transform: "none", opacity: 1 }, { transform: "translateY(-120%)", opacity: 0 }],
+        { duration: 160, delay: Math.min(i, 18) * 12, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" }
+      );
+    });
+    window.setTimeout(() => {
+      if (title._animToken !== token) return;
+      title.setAttribute("text", text);
+      const unit = parseFloat(getComputedStyle(title).getPropertyValue("--title-px")) || 3;
+      [...title.children].forEach((node, i) => {
+        node.getAnimations().forEach((anim) => anim.cancel());
+        node.animate([
+          { opacity: 0, transform: `translateY(${-6 * unit}px) scale(.6)` },
+          { opacity: 1, transform: `translateY(${unit}px) scale(1.05)`, offset: .6 },
+          { opacity: 1, transform: "none" },
+        ], { duration: 360, delay: Math.min(i, 24) * 18, easing: "cubic-bezier(.2, .8, .2, 1)", fill: "both" });
+      });
+    }, 180 + Math.min(old.length, 20) * 12);
+  }
+
+  function positionRailMarker() {
+    const marker = document.querySelector(".rail-marker");
+    const active = document.querySelector('.rail-link[aria-current="page"]');
+    if (!marker || !active) return;
+    const first = !marker.dataset.placed;
+    if (first) marker.classList.add("is-still");
+    marker.style.setProperty("--marker-y", `${active.offsetTop}px`);
+    marker.style.setProperty("--marker-h", `${active.offsetHeight}px`);
+    if (first) {
+      void marker.offsetWidth;
+      marker.dataset.placed = "1";
+      marker.classList.remove("is-still");
+    }
+  }
+
+  function tabDirection(from, to) {
+    if (to === "play" || to === "copy" || from === "play" || from === "copy") return "forward";
+    const a = TAB_ORDER.indexOf(from);
+    const b = TAB_ORDER.indexOf(to);
+    if (a < 0 || b < 0) return "forward";
+    return b > a ? "down" : "up";
+  }
+
+  function pageGhost(section, direction) {
+    document.querySelectorAll(".ghosts.page-ghost").forEach((node) => node.remove());
+    const view = section.closest(".view");
+    if (!view) return;
+    const rect = view.getBoundingClientRect();
+    const style = getComputedStyle(view);
+    const bodyStyle = getComputedStyle(document.body);
+    const ghost = document.createElement("div");
+    ghost.className = "ghosts page-ghost";
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.inert = true;
+    Object.assign(ghost.style, {
+      left: `${rect.left}px`,
+      top: `${rect.top}px`,
+      width: `${rect.width}px`,
+      height: `${rect.height}px`,
+      padding: style.padding,
+      backgroundImage: bodyStyle.backgroundImage,
+      backgroundSize: bodyStyle.backgroundSize,
+      backgroundPosition: bodyStyle.backgroundPosition,
+      backgroundRepeat: bodyStyle.backgroundRepeat,
+      backgroundColor: bodyStyle.backgroundColor,
+    });
+    const clone = section.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.hidden = false;
+    clone.removeAttribute("hidden");
+    clone.classList.remove("is-entering");
+    clone.style.position = "relative";
+    clone.style.inset = "auto";
+    clone.style.margin = "0";
+    clone.style.width = "100%";
+    clone.style.transform = `translateY(${-view.scrollTop}px)`;
+    for (const node of clone.querySelectorAll("[id], [data-key]")) {
+      node.removeAttribute("id");
+      node.removeAttribute("data-key");
+    }
+    ghost.append(clone);
+    document.body.append(ghost);
+    const unit = 16 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--px")) || 2);
+    const to = {
+      down: { clipPath: "inset(0 0 100% 0)", transform: `translateY(${-unit}px)` },
+      up: { clipPath: "inset(100% 0 0 0)", transform: `translateY(${unit}px)` },
+      forward: { clipPath: "inset(0 100% 0 0)", transform: `translateX(${-unit}px)` },
+      back: { clipPath: "inset(0 0 0 100%)", transform: `translateX(${unit}px)` },
+    }[direction] || { clipPath: "inset(0 100% 0 0)", transform: `translateX(${-unit}px)` };
+    ghost.animate(
+      [{ clipPath: "inset(0 0 0 0)", transform: "none" }, to],
+      { duration: 190, easing: "cubic-bezier(.4, 0, .6, 1)", fill: "forwards" }
+    ).finished.then(() => ghost.remove(), () => ghost.remove());
+  }
+
+  function animateEnter(section, direction) {
+    if (reducedMotion() || !section) return;
+    const unit = 12 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--px")) || 2);
+    const from = {
+      down: `translateY(${-unit}px)`,
+      up: `translateY(${unit}px)`,
+      forward: `translateX(${-unit}px)`,
+      back: `translateX(${unit}px)`,
+    }[direction] || `translateX(${-unit}px)`;
+    const kids = [...section.children];
+    kids.forEach((child, i) => {
+      child.getAnimations().forEach((anim) => anim.cancel());
+      child.animate([
+        { transform: from, clipPath: "inset(-50% 100% -50% -50%)", opacity: .45 },
+        { transform: "none", clipPath: "inset(-50% -50% -50% -50%)", opacity: 1 },
+      ], {
+        duration: 420,
+        delay: Math.min(i, 8) * 34,
+        easing: "cubic-bezier(.2, .8, .2, 1)",
+        fill: "backwards",
+      });
+    });
+    section.classList.add("is-entering");
+    window.setTimeout(() => section.classList.remove("is-entering"), 900);
+  }
+
+  function setupAccordions() {
+    for (const acc of document.querySelectorAll(".settings-list.accordion > .acc")) {
+      const head = acc.querySelector(":scope > .acc-head");
+      const body = acc.querySelector(":scope > .acc-body");
+      if (!head || !body) continue;
+      body.inert = !acc.classList.contains("is-open");
+      head.addEventListener("click", () => {
+        const open = !acc.classList.contains("is-open");
+        if (open) {
+          for (const other of acc.parentElement.children) {
+            if (other === acc || !other.classList?.contains("acc")) continue;
+            other.classList.remove("is-open");
+            other.querySelector(":scope > .acc-head")?.setAttribute("aria-expanded", "false");
+            const otherBody = other.querySelector(":scope > .acc-body");
+            if (otherBody) otherBody.inert = true;
+          }
+        }
+        acc.classList.toggle("is-open", open);
+        head.setAttribute("aria-expanded", String(open));
+        body.inert = !open;
+      });
+    }
   }
 
   class Sm64Text extends HTMLElement {
@@ -211,6 +373,7 @@
     }
     await loadROMFonts();
     refreshSm64Text();
+    requestAnimationFrame(() => positionRailMarker());
   }
 
   async function refreshROM(force = false) {
@@ -367,13 +530,30 @@
       for (const group of MOD_GROUPS) {
         const items = shown.filter((m) => modGroupKey(m) === group.key);
         if (!items.length) continue;
-        groups.push(el("section", { class: "group" },
-          el("div", { class: "group-head" },
-            el("h2", { class: "group-title" }, group.title, el("span", { class: "group-count" }, String(items.length))),
-            el("span", { class: "caption" }, group.hint)
-          ),
-          ...items.map(modRow)
-        ));
+        const open = !state.collapsedGroups.has(group.key);
+        const section = el("section", { class: "group acc" + (open ? " is-open" : "") });
+        const head = el("button", {
+          class: "group-head acc-head",
+          type: "button",
+          "aria-expanded": String(open),
+          onclick: () => {
+            const willOpen = !section.classList.contains("is-open");
+            section.classList.toggle("is-open", willOpen);
+            head.setAttribute("aria-expanded", String(willOpen));
+            body.inert = !willOpen;
+            if (willOpen) state.collapsedGroups.delete(group.key);
+            else state.collapsedGroups.add(group.key);
+          },
+        },
+          el("span", { class: "group-title" }, group.title, el("span", { class: "group-count" }, String(items.length))),
+          el("span", { class: "caption" }, group.hint),
+          el("span", { class: "acc-arrow", "aria-hidden": "true" })
+        );
+        const body = el("div", { class: "acc-body", inert: !open },
+          el("div", { class: "acc-inner" }, ...items.map(modRow))
+        );
+        section.append(head, body);
+        groups.push(section);
       }
       container.replaceChildren(...groups);
     }
@@ -382,11 +562,12 @@
     const total = state.mods.length;
     const count = $("#mod-count");
     if (count) {
-      count.textContent = `${on} activos`;
-      count.title = `${on} activos`;
+      const word = on === 1 ? "activo" : "activos";
+      count.textContent = `${on} ${word}`;
+      count.title = `${on} ${word}`;
     }
     let hint = total
-      ? `${total} instalados · ${on} activos. Los cambios se aplican la próxima vez que abras el juego.`
+      ? `${total} instalados · ${on} ${on === 1 ? "activo" : "activos"}. Los cambios se aplican la próxima vez que abras el juego.`
       : "Instala un .zip del sitio de mods o un archivo .lua que ya tengas.";
     if (state.status && !state.status.configFound) {
       hint += " Abre el juego una vez para que cree su archivo de configuración.";
@@ -2473,15 +2654,39 @@
 
   // ---------- tabs ----------
 
-  function showTab(name) {
+  function showTab(name, options = {}) {
+    const next = document.getElementById("tab-" + name);
+    if (!next) return;
+    const previousName = state.tab;
+    const previous = document.getElementById("tab-" + previousName);
+    const same = previous === next && !next.hidden;
+    if (same && !options.force) {
+      positionRailMarker();
+      return;
+    }
+    const view = next.closest(".view");
+    if (view && previousName) state.scroll[previousName] = view.scrollTop;
+    const direction = tabDirection(previousName, name);
+    if (!reducedMotion() && previous && !previous.hidden && previous.childElementCount) {
+      pageGhost(previous, direction);
+    }
     state.tab = name;
-    setPage(name);
+    setPage(name, true);
     for (const btn of document.querySelectorAll(".rail-link")) {
       if (btn.dataset.tab === name) btn.setAttribute("aria-current", "page");
       else btn.removeAttribute("aria-current");
     }
-    for (const section of document.querySelectorAll(".tab")) {
+    for (const section of document.querySelectorAll(".view > .tab")) {
       section.hidden = section.id !== "tab-" + name;
+    }
+    animateEnter(next, direction);
+    positionRailMarker();
+    if (view) {
+      const target = state.scroll[name] || 0;
+      view.scrollTop = target;
+      requestAnimationFrame(() => {
+        if (Math.abs(view.scrollTop - target) > 1) view.scrollTop = target;
+      });
     }
     if (name === "play") guard(async () => {
       await refreshSession(true);
@@ -2507,6 +2712,8 @@
   // ---------- boot ----------
 
   function bind() {
+    setupAccordions();
+    window.addEventListener("resize", () => positionRailMarker());
     for (const btn of document.querySelectorAll(".rail-link")) {
       btn.addEventListener("click", () => showTab(btn.dataset.tab));
     }
@@ -2609,6 +2816,8 @@
   async function boot() {
     bind();
     setPage("mods");
+    positionRailMarker();
+    window.setTimeout(() => document.documentElement.classList.remove("booting"), 950);
     try {
       await refreshStatus();
       refreshROM(true).catch(() => {});
@@ -2620,6 +2829,7 @@
     } catch (err) {
       toast(err.message || "Could not talk to the loader.", "bad");
     }
+    requestAnimationFrame(() => positionRailMarker());
     setInterval(() => refreshStatus().catch(() => {}), 5000);
     setInterval(() => {
       if (state.tab === "play" || state.session) refreshSession().catch(() => {});

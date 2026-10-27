@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-view="mods">
+<html lang="es" class="booting" data-view="mods">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -187,101 +187,130 @@
           </section>
 
           <section class="tab" id="tab-settings" hidden>
-            <ul class="settings-list">
-              <li class="group">
-                <div class="group-head">
-                  <h2 class="group-title">Carpeta del juego</h2>
+            <ul class="settings-list accordion">
+              <li class="group acc is-open">
+                <button class="group-head acc-head" type="button" aria-expanded="true">
+                  <span class="group-title">Carpeta del juego</span>
                   <span class="caption">La carpeta que contiene <code>sm64coopdx</code>.</span>
-                </div>
-                <div class="settings-row">
-                  <div class="settings-value" id="game-state">Sin configurar.</div>
-                  <div class="settings-actions">
-                    <button id="game-detect" class="btn" type="button">Detectar</button>
-                    <button id="game-save" class="btn" type="button">Guardar</button>
+                  <span class="acc-arrow" aria-hidden="true"></span>
+                </button>
+                <div class="acc-body">
+                  <div class="acc-inner">
+                    <div class="settings-row">
+                      <div class="settings-value" id="game-state">Sin configurar.</div>
+                      <div class="settings-actions">
+                        <button id="game-detect" class="btn" type="button">Detectar</button>
+                        <button id="game-save" class="btn" type="button">Guardar</button>
+                      </div>
+                    </div>
+                    <input id="game-path" class="field" type="text" spellcheck="false" aria-label="Carpeta del juego" />
                   </div>
                 </div>
-                <input id="game-path" class="field" type="text" spellcheck="false" aria-label="Carpeta del juego" />
               </li>
-
-              <li class="group">
-                <div class="group-head">
-                  <h2 class="group-title">Estilo del juego</h2>
+              <li class="group acc">
+                <button class="group-head acc-head" type="button" aria-expanded="false">
+                  <span class="group-title">Estilo del juego</span>
                   <span class="caption" id="rom-state">Buscando tu ROM de Super Mario 64 (USA)…</span>
-                </div>
-                <div class="settings-row">
-                  <div class="settings-value">
-                    Las imágenes y letras de la app se leen de tu propia ROM.
-                    Nada del juego viene incluido.
-                  </div>
-                  <div class="settings-actions">
-                    <label class="btn" for="rom-file">Usar otro archivo</label>
-                    <input id="rom-file" type="file" accept=".z64,.n64,.v64" hidden />
+                  <span class="acc-arrow" aria-hidden="true"></span>
+                </button>
+                <div class="acc-body" inert>
+                  <div class="acc-inner">
+                    <div class="settings-row">
+                      <div class="settings-value">
+                        Las imágenes y letras de la app se leen de tu propia ROM.
+                        Nada del juego viene incluido.
+                      </div>
+                      <div class="settings-actions">
+                        <label class="btn" for="rom-file">Usar otro archivo</label>
+                        <input id="rom-file" type="file" accept=".z64,.n64,.v64" hidden />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </li>
-
-              <li class="group">
-                <div class="group-head">
-                  <h2 class="group-title">Idioma</h2>
+              <li class="group acc">
+                <button class="group-head acc-head" type="button" aria-expanded="false">
+                  <span class="group-title">Idioma</span>
                   <span class="caption">La app usa el idioma de tu sistema. Cámbialo aquí.</span>
-                </div>
-                <div class="settings-row">
-                  <div class="settings-value">Español</div>
-                  <div class="settings-actions">
-                    <span class="field lang-field">Español ▾</span>
+                  <span class="acc-arrow" aria-hidden="true"></span>
+                </button>
+                <div class="acc-body" inert>
+                  <div class="acc-inner">
+                    <div class="settings-row">
+                      <div class="settings-value">Español</div>
+                      <div class="settings-actions">
+                        <span class="field lang-field">Español ▾</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </li>
-
-              <li class="group">
-                <div class="group-head">
-                  <h2 class="group-title">Al apretar Jugar</h2>
+              <li class="group acc">
+                <button class="group-head acc-head" type="button" aria-expanded="false">
+                  <span class="group-title">Al apretar Jugar</span>
                   <span class="caption">Cerrar el loader le deja al juego toda tu memoria y tu tarjeta gráfica. Lo mejor con ray tracing o mods pesados.</span>
-                </div>
-                <div class="settings-row">
-                  <div class="settings-value">Cerrar el loader o dejarlo abierto.</div>
-                  <label class="switch" title="Cerrar el loader al jugar">
-                    <input id="close-on-play" type="checkbox" />
-                    <span class="knob" aria-hidden="true"></span>
-                    <span class="switch-word" id="close-on-play-word">Cerrar el loader</span>
-                  </label>
-                </div>
-              </li>
-
-              <li class="group">
-                <div class="group-head">
-                  <h2 class="group-title">Tus otros dispositivos</h2>
-                  <span class="caption">Copia tus mods, tu aspecto y tus partidas guardadas hacia o desde otro computador o teléfono.</span>
-                </div>
-                <div class="settings-row">
-                  <div class="settings-value">La copia va cifrada con un código de 8 letras.</div>
-                  <div class="settings-actions">
-                    <button id="open-copy" class="btn" type="button">Copiar entre dispositivos</button>
+                  <span class="acc-arrow" aria-hidden="true"></span>
+                </button>
+                <div class="acc-body" inert>
+                  <div class="acc-inner">
+                    <div class="settings-row">
+                      <div class="settings-value">Cerrar el loader o dejarlo abierto.</div>
+                      <label class="switch" title="Cerrar el loader al jugar">
+                        <input id="close-on-play" type="checkbox" />
+                        <span class="knob" aria-hidden="true"></span>
+                        <span class="switch-word" id="close-on-play-word">Cerrar el loader</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </li>
-
-              <li class="group">
-                <div class="group-head">
-                  <h2 class="group-title">Dónde están las cosas</h2>
+              <li class="group acc">
+                <button class="group-head acc-head" type="button" aria-expanded="false">
+                  <span class="group-title">Tus otros dispositivos</span>
+                  <span class="caption">Copia tus mods, tu aspecto y tus partidas guardadas hacia o desde otro computador o teléfono.</span>
+                  <span class="acc-arrow" aria-hidden="true"></span>
+                </button>
+                <div class="acc-body" inert>
+                  <div class="acc-inner">
+                    <div class="settings-row">
+                      <div class="settings-value">La copia va cifrada con un código de 8 letras.</div>
+                      <div class="settings-actions">
+                        <button id="open-copy" class="btn" type="button">Copiar entre dispositivos</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <dl class="paths">
-                  <dt>Datos del juego</dt><dd id="path-data"></dd>
-                  <dt>Configuración</dt><dd id="path-config"></dd>
-                  <dt>Partida</dt><dd id="path-save"></dd>
-                  <dt>Loader</dt><dd id="path-loader"></dd>
-                </dl>
               </li>
-
-              <li class="group">
-                <div class="group-head">
-                  <h2 class="group-title">Acerca de</h2>
-                  <span class="caption">Coop Loader es un proyecto de fans, no hecho por Nintendo ni por el equipo de sm64coopdx.</span>
+              <li class="group acc">
+                <button class="group-head acc-head" type="button" aria-expanded="false">
+                  <span class="group-title">Dónde están las cosas</span>
+                  <span class="acc-arrow" aria-hidden="true"></span>
+                </button>
+                <div class="acc-body" inert>
+                  <div class="acc-inner">
+                    <dl class="paths">
+                      <dt>Datos del juego</dt><dd id="path-data"></dd>
+                      <dt>Configuración</dt><dd id="path-config"></dd>
+                      <dt>Partida</dt><dd id="path-save"></dd>
+                      <dt>Loader</dt><dd id="path-loader"></dd>
+                    </dl>
+                  </div>
                 </div>
-                <p class="hint">
-                  El loader lee tus propios archivos del juego; no incluye ningún
-                  recurso de Nintendo. Los dibujos y las letras vienen de tu ROM.
-                </p>
+              </li>
+              <li class="group acc">
+                <button class="group-head acc-head" type="button" aria-expanded="false">
+                  <span class="group-title">Acerca de</span>
+                  <span class="caption">Coop Loader es un proyecto de fans, no hecho por Nintendo ni por el equipo de sm64coopdx.</span>
+                  <span class="acc-arrow" aria-hidden="true"></span>
+                </button>
+                <div class="acc-body" inert>
+                  <div class="acc-inner">
+                    <p class="hint">
+                      El loader lee tus propios archivos del juego; no incluye ningún
+                      recurso de Nintendo. Los dibujos y las letras vienen de tu ROM.
+                    </p>
+                  </div>
+                </div>
               </li>
             </ul>
           </section>

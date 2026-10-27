@@ -199,6 +199,32 @@ Los presets son los `.ini` de `<carpeta del juego>/palettes` (integrados) y de
 y recuerda el personaje en `player-presets.json`. Borrar un preset lo mueve a
 `removed-by-coop-loader/presets-<fecha>/`; nunca se borra.
 
+### Acordeón y movimiento
+
+La pantalla de **Opciones** es un acordeón: cada sección es una cabecera con la
+misma barra de grupo que usan los mods (título, pista y flecha). Al pulsar una
+cabecera se cierra la anterior y se abre la nueva con una transición de altura;
+solo queda una abierta. Los grupos de **Mis mods** también se pueden plegar,
+pero recuerdan su estado y pueden estar todos abiertos a la vez.
+
+El movimiento copia el del cliente de referencia, sin dependencias:
+
+- **Cambio de pestaña**: se clona la pantalla anterior en una capa fija, se
+  recorta con `clip-path` en la dirección del movimiento y se retira en 190 ms;
+  la nueva dibuja sus bloques con un barrido y un pequeño escalonado.
+- **Título**: cada letra del HUD sube y se va antes de que el título nuevo
+  entre letra a letra.
+- **Barra lateral**: el marcador se desliza con un muelle entre secciones.
+- **Botones**: se levantan 1 px al pasar el ratón, se hunden al pulsar y el
+  botón **Jugar** da un pequeño empujón.
+- **Filas y tarjetas**: se desplazan 2 px y cambian el fondo.
+- **Interruptores**: la cara de Mario crece y el interruptor hace un rebote.
+- **Diálogos y avisos**: entran con caída y rebote; el foco dibuja su contorno.
+- **Cursor**: mano abierta; al pulsar, mano cerrada.
+
+Todo se desactiva con `prefers-reduced-motion: reduce`, y las animaciones usan
+solo CSS y la API `Element.animate` del navegador.
+
 ## 5. API
 
 ```text

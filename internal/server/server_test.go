@@ -107,8 +107,16 @@ func TestStaticPageAndCSP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), "COOP MODS") {
-		t.Fatal("index.html was not served")
+	page := string(body)
+	for _, want := range []string{
+		"COOP MODS",
+		"settings-list accordion",
+		"acc-head",
+		"aria-expanded",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("index.html lacks %q", want)
+		}
 	}
 	csp := resp.Header.Get("Content-Security-Policy")
 	if !strings.Contains(csp, "https://mods.sm64coopdx.com") {
