@@ -24,6 +24,8 @@
 /saves.json
 /profiles.json
 /settings.json
+/site-cache.json
+/installed.json
 
 # Editors / OS
 .vscode/

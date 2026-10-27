@@ -15,11 +15,14 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/retired64/coop-loader/internal/catalog"
 	"github.com/retired64/coop-loader/internal/conf"
 	"github.com/retired64/coop-loader/internal/eeprom"
 	"github.com/retired64/coop-loader/internal/fsutil"
 	"github.com/retired64/coop-loader/internal/game"
+	"github.com/retired64/coop-loader/internal/installed"
 	"github.com/retired64/coop-loader/internal/mods"
 	"github.com/retired64/coop-loader/internal/paths"
 	"github.com/retired64/coop-loader/internal/settings"
@@ -45,16 +48,29 @@ type Service struct {
 	// running is a seam for tests; production always asks the OS.
 	running func() bool
 
+	installMu sync.Mutex
+
+	catalogMu   sync.Mutex
+	catalogBase string
+	catalogGap  time.Duration
+	catalogCli  *catalog.Client
+	catalogErr  error
+
+	records *installed.Store
+
 	configBackup sync.Once
 }
 
 // New builds a service rooted at explicit directories (used by tests).
 func New(loaderDir, gameData string) *Service {
+	records, _ := installed.Load(filepath.Join(loaderDir, "installed.json"))
 	return &Service{
-		loaderDir: loaderDir,
-		gameData:  gameData,
-		settings:  settings.NewStore(loaderDir),
-		running:   game.Running,
+		loaderDir:   loaderDir,
+		gameData:    gameData,
+		settings:    settings.NewStore(loaderDir),
+		running:     game.Running,
+		catalogBase: catalog.DefaultBaseURL,
+		records:     records,
 	}
 }
 
@@ -222,6 +238,7 @@ func (s *Service) Remove(id string, kind mods.Kind) (string, error) {
 		}
 		_ = s.writeConfigLocked(doc)
 	}
+	_ = s.records.Delete(id)
 	if profiles, err := conf.LoadProfiles(s.profilesPath()); err == nil {
 		changed := false
 		for name, set := range profiles.Sets {

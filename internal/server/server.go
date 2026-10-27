@@ -18,9 +18,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/retired64/coop-loader/internal/app"
+	"github.com/retired64/coop-loader/internal/catalog"
 	"github.com/retired64/coop-loader/internal/eeprom"
 	"github.com/retired64/coop-loader/internal/game"
 	"github.com/retired64/coop-loader/internal/mods"
@@ -57,6 +59,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/mods/remove", s.wrap(s.removeMod))
 	mux.HandleFunc("POST /api/mods/install", s.wrap(s.installMod))
 
+	mux.HandleFunc("GET /api/catalog/categories", s.wrap(s.categories))
+	mux.HandleFunc("GET /api/catalog/list", s.wrap(s.listCatalog))
+	mux.HandleFunc("GET /api/catalog/detail", s.wrap(s.detailCatalog))
+	mux.HandleFunc("POST /api/catalog/install", s.wrap(s.installFromSite))
+	mux.HandleFunc("POST /api/catalog/clear-cache", s.wrap(s.clearCatalogCache))
+
 	mux.HandleFunc("GET /api/saves", s.wrap(s.listSaves))
 	mux.HandleFunc("POST /api/saves/copy", s.wrap(s.copySlot))
 	mux.HandleFunc("POST /api/saves/clear", s.wrap(s.clearSlot))
@@ -69,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("POST /api/settings/gamepath", s.wrap(s.setGamePath))
 	mux.HandleFunc("POST /api/settings/closeonplay", s.wrap(s.setCloseOnPlay))
+	mux.HandleFunc("POST /api/open-external", s.wrap(s.openExternal))
 	mux.HandleFunc("POST /api/game/detect", s.wrap(s.detectGame))
 	mux.HandleFunc("POST /api/game/launch", s.wrap(s.launchGame))
 
@@ -89,9 +98,9 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) listMods(w http.ResponseWriter, r *http.Request) error {
-	list := s.svc.Mods()
+	list := s.svc.LocalMods()
 	if list == nil {
-		list = []mods.Mod{}
+		list = []app.LocalMod{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"mods": list})
 	return nil
@@ -191,6 +200,86 @@ func (s *Server) installMod(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"installed": installed})
+	return nil
+}
+
+func (s *Server) categories(w http.ResponseWriter, r *http.Request) error {
+	list, err := s.svc.Categories(r.Context())
+	if err != nil {
+		return httpError{status: http.StatusBadGateway, msg: err.Error()}
+	}
+	if list == nil {
+		list = []catalog.Category{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"categories": list})
+	return nil
+}
+
+func (s *Server) listCatalog(w http.ResponseWriter, r *http.Request) error {
+	q := catalog.Query{
+		Sort:   r.URL.Query().Get("sort"),
+		Search: r.URL.Query().Get("q"),
+	}
+	if n, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && n > 0 {
+		q.Page = n
+	}
+	if n, err := strconv.Atoi(r.URL.Query().Get("category")); err == nil && n > 0 {
+		q.Category = n
+	}
+	listing, err := s.svc.Browse(r.Context(), q)
+	if err != nil {
+		return httpError{status: http.StatusBadGateway, msg: err.Error()}
+	}
+	if listing.Items == nil {
+		listing.Items = []catalog.Item{}
+	}
+	writeJSON(w, http.StatusOK, listing)
+	return nil
+}
+
+func (s *Server) detailCatalog(w http.ResponseWriter, r *http.Request) error {
+	ref := r.URL.Query().Get("url")
+	if ref == "" {
+		return badRequest(errors.New("url is required"))
+	}
+	detail, err := s.svc.Detail(r.Context(), ref)
+	if err != nil {
+		return httpError{status: http.StatusBadGateway, msg: err.Error()}
+	}
+	writeJSON(w, http.StatusOK, detail)
+	return nil
+}
+
+func (s *Server) installFromSite(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		URL           string `json:"url"`
+		File          string `json:"file"`
+		AllowCompiled bool   `json:"allowCompiled"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if strings.TrimSpace(in.URL) == "" {
+		return badRequest(errors.New("url is required"))
+	}
+	out, err := s.svc.InstallFromSite(r.Context(), in.URL, in.File, in.AllowCompiled)
+	if err != nil {
+		if errors.Is(err, app.ErrGameRunning) || errors.Is(err, mods.ErrCompiled) ||
+			errors.Is(err, mods.ErrTooBig) || errors.Is(err, mods.ErrNoMods) ||
+			errors.Is(err, mods.ErrUnsupported) {
+			return err
+		}
+		return httpError{status: http.StatusBadGateway, msg: err.Error()}
+	}
+	writeJSON(w, http.StatusOK, out)
+	return nil
+}
+
+func (s *Server) clearCatalogCache(w http.ResponseWriter, r *http.Request) error {
+	if err := s.svc.ClearCatalogCache(); err != nil {
+		return httpError{status: http.StatusBadGateway, msg: err.Error()}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	return nil
 }
 
@@ -331,6 +420,20 @@ func (s *Server) setCloseOnPlay(w http.ResponseWriter, r *http.Request) error {
 	return s.svc.SetCloseOnPlay(in.On)
 }
 
+func (s *Server) openExternal(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		URL string `json:"url"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if err := s.svc.OpenExternal(in.URL); err != nil {
+		return badRequest(err)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return nil
+}
+
 func (s *Server) detectGame(w http.ResponseWriter, r *http.Request) error {
 	path := s.svc.DetectGame()
 	writeJSON(w, http.StatusOK, map[string]any{"gamePath": path, "gameFound": path != ""})
@@ -356,7 +459,7 @@ func (s *Server) headers(next http.Handler) http.Handler {
 			w.Header().Set("Content-Security-Policy", "default-src 'none'")
 		} else {
 			w.Header().Set("Content-Security-Policy",
-				"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'")
+				"default-src 'self'; img-src 'self' data: https://mods.sm64coopdx.com https://i.ytimg.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'")
 		}
 		next.ServeHTTP(w, r)
 	})

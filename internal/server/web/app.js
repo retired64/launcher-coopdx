@@ -29,6 +29,19 @@
     profiles: null,
     filter: "",
     tab: "mods",
+    browse: {
+      q: "",
+      sort: "downloads",
+      category: 0,
+      page: 1,
+      pages: 1,
+      items: [],
+      categories: [],
+      loading: false,
+      loaded: false,
+      error: null,
+      fromCache: false,
+    },
   };
 
   // ---------- API ----------
@@ -127,6 +140,7 @@
     const data = await api("/api/mods");
     state.mods = data.mods || [];
     renderMods();
+    if (state.browse.loaded) renderBrowse();
   }
 
   function renderMods() {
@@ -188,7 +202,7 @@
       el("div", { class: "item-main" },
         el("div", { class: "item-title" }, el("strong", {}, m.name), ...tags),
         m.description ? el("p", { class: "item-desc" }, m.description) : null,
-        el("div", { class: "item-id" }, m.id)
+        el("div", { class: "item-id" }, m.site ? `${m.id} · site ${m.site.version}` : m.id)
       ),
       el("div", { class: "item-actions" }, ...actions)
     );
@@ -239,6 +253,385 @@
         await uploadMod(file, true);
       }
     });
+  }
+
+
+  // ---------- browse ----------
+
+  const normVer = (v) => String(v || "").trim().replace(/^v/i, "").trim();
+  const sameVer = (a, b) => normVer(a) === normVer(b);
+
+  function recordFor(siteId) {
+    for (const m of state.mods) {
+      if (m.site && m.site.siteId === siteId) return m.site;
+    }
+    return null;
+  }
+
+  function browseStatus(siteId, version) {
+    const rec = recordFor(siteId);
+    if (!rec) return "none";
+    return sameVer(rec.version, version) ? "installed" : "update";
+  }
+
+  async function loadCategories() {
+    if (state.browse.categories.length) return;
+    const data = await api("/api/catalog/categories");
+    state.browse.categories = data.categories || [];
+    const select = $("#browse-cat");
+    for (const c of state.browse.categories) {
+      select.append(el("option", { value: String(c.id) }, "  ".repeat(c.depth || 0) + c.title));
+    }
+  }
+
+  async function loadBrowse(reset) {
+    const b = state.browse;
+    if (b.loading) return;
+    if (reset) {
+      b.page = 1;
+      b.items = [];
+      b.loaded = false;
+    }
+    const requestedPage = b.page;
+    b.loading = true;
+    b.error = null;
+    renderBrowse();
+
+    try {
+      const params = new URLSearchParams({
+        sort: b.sort,
+        page: String(b.page),
+        q: b.q,
+      });
+      if (b.category) params.set("category", String(b.category));
+      const data = await api("/api/catalog/list?" + params.toString());
+      b.items = reset ? data.items || [] : b.items.concat(data.items || []);
+      b.pages = data.pages || 1;
+      b.fromCache = !!data.fromCache;
+      b.loaded = true;
+    } catch (err) {
+      if (!reset && b.page === requestedPage) {
+        b.page = Math.max(1, b.page - 1);
+      }
+      b.error = err.message || String(err);
+    } finally {
+      b.loading = false;
+      renderBrowse();
+    }
+  }
+
+  function renderBrowse() {
+    const b = state.browse;
+    const list = $("#browse-list");
+    if (!b.loaded && b.loading) {
+      list.replaceChildren(el("p", { class: "boot" }, "Loading the mod site…"));
+      $("#browse-more").hidden = true;
+      return;
+    }
+    if (b.error) {
+      list.replaceChildren(el("div", { class: "notice" }, b.error));
+      $("#browse-more").hidden = true;
+      return;
+    }
+
+    list.replaceChildren(...b.items.map(browseRow));
+    if (!b.items.length && b.loaded) {
+      list.append(el("p", { class: "boot" }, "No mods match that search."));
+    }
+    $("#browse-more").hidden = b.page >= b.pages || b.loading;
+    $("#browse-hint").textContent = b.loaded
+      ? `Page ${b.page} of ${b.pages}${b.fromCache ? " · cached" : ""}. Click a title to read the mod.`
+      : "Mods come from mods.sm64coopdx.com. The loader asks before installing.";
+  }
+
+  function browseRow(item) {
+    const status = browseStatus(item.id, item.version);
+    const install = el("button", {
+      class: "btn" + (status === "update" ? " btn-accent" : ""),
+      type: "button",
+      disabled: status === "installed",
+    }, status === "installed" ? "Installed" : status === "update" ? "Update" : "Install");
+    install.addEventListener("click", () => guard(() => installSite(item)));
+
+    const icon = item.icon
+      ? el("img", {
+          class: "browse-icon",
+          src: item.icon,
+          alt: "",
+          loading: "lazy",
+          onerror: (ev) => { ev.target.style.visibility = "hidden"; },
+        })
+      : el("div", { class: "browse-icon" });
+
+    return el("div", { class: "browse-item" },
+      icon,
+      el("div", { class: "browse-main" },
+        el("div", { class: "browse-title" },
+          el("button", { type: "button", onclick: () => guard(() => openDetail(item)) }, item.title),
+          item.version ? el("span", { class: "tag" }, item.version) : null,
+          status === "update" ? el("span", { class: "tag pack" }, "update") : null
+        ),
+        el("div", { class: "browse-sub" }, [item.author, item.category].filter(Boolean).join(" · ")),
+        item.tagline ? el("p", { class: "browse-tagline" }, item.tagline) : null,
+        el("div", { class: "browse-stats" },
+          item.rating ? el("span", {}, `★ ${Number(item.rating).toFixed(1)}${item.ratingCount ? ` (${item.ratingCount})` : ""}`) : null,
+          item.downloads ? el("span", {}, `${Number(item.downloads).toLocaleString()} downloads`) : null
+        )
+      ),
+      el("div", { class: "browse-action" }, install)
+    );
+  }
+
+  async function openDetail(item) {
+    const dialog = el("dialog", { class: "dialog detail-dialog" });
+    const close = () => dialog.close();
+    const title = el("h3", {}, item.title);
+    const body = el("div", { class: "detail-body" }, el("p", { class: "boot" }, "Loading…"));
+
+    dialog.append(
+      el("div", { class: "detail-head" }, title, el("button", { class: "btn btn-ghost", type: "button", onclick: close }, "Close")),
+      body
+    );
+    dialog.addEventListener("close", () => dialog.remove());
+    document.body.append(dialog);
+    dialog.showModal();
+
+    let detail;
+    try {
+      detail = await api("/api/catalog/detail?url=" + encodeURIComponent(item.url));
+    } catch (err) {
+      body.replaceChildren(el("div", { class: "notice" }, err.message || "Could not load this mod’s page."));
+      return;
+    }
+    title.textContent = detail.title || item.title;
+
+    const status = browseStatus(detail.id, detail.version);
+    const install = el("button", {
+      class: "btn" + (status === "update" ? " btn-accent" : ""),
+      type: "button",
+      disabled: status === "installed",
+    }, status === "installed" ? "Installed" : status === "update" ? "Update" : "Install");
+    install.addEventListener("click", () => guard(async () => {
+      dialog.close();
+      await installSite(detail);
+    }));
+
+    const meta = el("div", { class: "detail-meta" },
+      detail.author ? el("span", {}, "by " + detail.author) : null,
+      detail.category ? el("span", {}, detail.category) : null,
+      detail.version ? el("span", {}, "v" + normVer(detail.version)) : null,
+      detail.rating ? el("span", {}, "★ " + Number(detail.rating).toFixed(1)) : null,
+      detail.downloads ? el("span", {}, Number(detail.downloads).toLocaleString() + " downloads") : null
+    );
+
+    const links = (detail.links && detail.links.length)
+      ? el("div", { class: "detail-links" },
+          el("span", { class: "caption" }, "Linked mods: "),
+          ...detail.links.map((link) => el("button", {
+            class: "btn btn-ghost",
+            type: "button",
+            onclick: () => guard(() => installSite(link)),
+          }, link.title))
+        )
+      : null;
+
+    const nodes = [meta];
+    if (links) nodes.push(links);
+    nodes.push(...renderBlocks(detail.blocks));
+    nodes.push(el("div", { class: "detail-actions" },
+      install,
+      el("button", { class: "btn btn-ghost", type: "button", onclick: () => openExternal(detail.url) }, "Open page")
+    ));
+    body.replaceChildren(...nodes);
+  }
+
+  function renderBlocks(blocks) {
+    const out = [];
+    for (const b of blocks || []) {
+      switch (b.kind) {
+        case "image":
+          out.push(el("img", { class: "detail-image", src: b.src, alt: "", loading: "lazy" }));
+          break;
+        case "list": {
+          const list = el("ul");
+          for (const item of b.items || []) list.append(el("li", {}, ...renderInline(item)));
+          out.push(list);
+          break;
+        }
+        case "quote":
+          out.push(el("blockquote", {}, ...renderInline(b.inline)));
+          break;
+        case "h":
+          out.push(el("h3", { class: "detail-h" }, ...renderInline(b.inline)));
+          break;
+        default:
+          out.push(el("p", {}, ...renderInline(b.inline)));
+      }
+    }
+    return out;
+  }
+
+  function renderInline(items) {
+    const out = [];
+    for (const run of items || []) {
+      if (run.br) {
+        out.push(el("br"));
+        continue;
+      }
+      const text = run.text || "";
+      let node = document.createTextNode(text);
+      if (run.href) {
+        node = el("a", {
+          href: run.href,
+          rel: "noreferrer noopener",
+          onclick: (ev) => { ev.preventDefault(); openExternal(run.href); },
+        }, text);
+      }
+      if (run.code) node = el("code", {}, node);
+      if (run.bold) node = el("strong", {}, node);
+      if (run.italic) node = el("em", {}, node);
+      if (run.underline) node = el("u", {}, node);
+      if (run.strike) node = el("s", {}, node);
+      out.push(node);
+    }
+    return out;
+  }
+
+  async function installSite(item, opts = {}) {
+    const body = {
+      url: item.url,
+      file: opts.file || "",
+      allowCompiled: !!opts.allow,
+    };
+    let res;
+    try {
+      res = await postJSON("/api/catalog/install", body);
+    } catch (err) {
+      if (err.code === "compiled" && !opts.allow) {
+        const ok = confirm(
+          "This mod contains compiled Lua, which cannot be reviewed.\n\n" +
+          "Mods run code inside your game. Install it only if you trust the author."
+        );
+        if (!ok) return;
+        return installSite(item, { ...opts, allow: true });
+      }
+      throw err;
+    }
+
+    if (res.kind === "external") {
+      openExternalDialog(res.url);
+      return;
+    }
+    if (res.kind === "choose") {
+      openChooseDialog(item, res.files || []);
+      return;
+    }
+    if (res.kind === "installed") {
+      await loadMods();
+      renderBrowse();
+      toast("Installed " + (res.installed || []).join(", ") + ".", "ok");
+      if (res.requires && res.requires.length) openRequiresDialog(res.requires);
+    }
+  }
+
+  function openChooseDialog(item, files) {
+    const dialog = el("dialog", { class: "dialog" });
+    const close = () => dialog.close();
+    const list = el("div", { class: "copy-targets" });
+    for (const f of files) {
+      list.append(el("button", {
+        class: "btn",
+        type: "button",
+        onclick: () => {
+          dialog.close();
+          guard(() => installSite(item, { file: f.url }));
+        },
+      }, f.name + (f.size ? ` (${f.size})` : "")));
+    }
+    dialog.append(
+      el("h3", {}, "Pick a file"),
+      el("p", { class: "hint" }, "This mod comes in more than one file."),
+      list,
+      el("div", { class: "dialog-actions" },
+        el("button", { class: "btn", type: "button", onclick: close }, "Cancel")
+      )
+    );
+    dialog.addEventListener("close", () => dialog.remove());
+    document.body.append(dialog);
+    dialog.showModal();
+  }
+
+  function openExternalDialog(url) {
+    let host = "";
+    try { host = new URL(url).hostname; } catch { /* ignore */ }
+    const dialog = el("dialog", { class: "dialog" });
+    const close = () => dialog.close();
+    dialog.append(
+      el("h3", {}, "Open on the author’s page"),
+      el("p", { class: "hint" },
+        `This mod is hosted on ${host || "another site"}, not on the mod site. ` +
+        "The loader does not download from there. Open the page and get the file yourself."
+      ),
+      el("div", { class: "dialog-actions" },
+        el("button", { class: "btn", type: "button", onclick: close }, "Cancel"),
+        el("button", {
+          class: "btn btn-accent",
+          type: "button",
+          onclick: () => { close(); openExternal(url); },
+        }, "Open in browser")
+      )
+    );
+    dialog.addEventListener("close", () => dialog.remove());
+    document.body.append(dialog);
+    dialog.showModal();
+  }
+
+  function openRequiresDialog(requires) {
+    const dialog = el("dialog", { class: "dialog detail-dialog" });
+    const close = () => dialog.close();
+    const body = el("div", { class: "requires" });
+
+    for (const req of requires) {
+      const row = el("div", { class: "require" },
+        el("div", { class: "require-head" }, "Needs ", el("code", {}, "_G." + req.global)),
+        el("p", { class: "hint" }, "No enabled mod provides it, so this mod may not work yet.")
+      );
+      for (const provider of req.local || []) {
+        row.append(el("button", {
+          class: "btn",
+          type: "button",
+          onclick: () => guard(async () => {
+            await postJSON("/api/mods/toggle", { id: provider.id, kind: "mod", on: true });
+            await loadMods();
+            row.remove();
+            toast("Turned on " + provider.name + ".", "ok");
+          }),
+        }, "Enable " + provider.name));
+      }
+      for (const candidate of req.site || []) {
+        row.append(el("button", {
+          class: "btn btn-ghost",
+          type: "button",
+          onclick: () => guard(() => installSite(candidate)),
+        }, "Install " + candidate.title));
+      }
+      body.append(row);
+    }
+
+    dialog.append(
+      el("div", { class: "detail-head" },
+        el("h3", {}, "This mod has requirements"),
+        el("button", { class: "btn btn-ghost", type: "button", onclick: close }, "Close")
+      ),
+      body
+    );
+    dialog.addEventListener("close", () => dialog.remove());
+    document.body.append(dialog);
+    dialog.showModal();
+  }
+
+  async function openExternal(url) {
+    await guard(() => postJSON("/api/open-external", { url }));
   }
 
   // ---------- saves ----------
@@ -434,6 +827,10 @@
     for (const section of document.querySelectorAll(".tab")) {
       section.hidden = section.id !== "tab-" + name;
     }
+    if (name === "browse") guard(async () => {
+      await loadCategories();
+      if (!state.browse.loaded) await loadBrowse(true);
+    });
     if (name === "saves") guard(loadSaves);
     if (name === "profiles") guard(loadProfiles);
     if (name === "mods") guard(loadMods);
@@ -450,6 +847,30 @@
       renderMods();
     });
     $("#install-file").addEventListener("change", onInstallPicked);
+
+    $("#browse-q").addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault();
+      state.browse.q = ev.target.value.trim();
+      guard(() => loadBrowse(true));
+    });
+    $("#browse-sort").addEventListener("change", (ev) => {
+      state.browse.sort = ev.target.value;
+      guard(() => loadBrowse(true));
+    });
+    $("#browse-cat").addEventListener("change", (ev) => {
+      state.browse.category = Number(ev.target.value) || 0;
+      guard(() => loadBrowse(true));
+    });
+    $("#browse-refresh").addEventListener("click", () => guard(async () => {
+      await postJSON("/api/catalog/clear-cache", {});
+      await loadBrowse(true);
+    }));
+    $("#browse-more").addEventListener("click", () => guard(async () => {
+      if (state.browse.page >= state.browse.pages) return;
+      state.browse.page += 1;
+      await loadBrowse(false);
+    }));
     $("#save-file").addEventListener("change", onSavePicked);
     $("#play").addEventListener("click", launchGame);
     $("#game-save").addEventListener("click", saveGamePath);

@@ -169,6 +169,15 @@ func TestRemoveKeepsFiles(t *testing.T) {
 	}
 }
 
+func TestOpenExternalOnlyHTTPS(t *testing.T) {
+	svc, _ := newTestService(t)
+	for _, raw := range []string{"http://example.com", "file:///etc/passwd", "javascript:alert(1)", ""} {
+		if err := svc.OpenExternal(raw); err == nil {
+			t.Errorf("OpenExternal(%q) should fail", raw)
+		}
+	}
+}
+
 func TestGameRunningBlocksWrites(t *testing.T) {
 	svc, gameData := newTestService(t)
 	addMod(t, gameData, "X", "-- name: X\n")

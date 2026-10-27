@@ -25,6 +25,7 @@
     <div class="shell">
       <nav class="rail" aria-label="Sections">
         <button class="rail-link" data-tab="mods" aria-current="page">Mods</button>
+        <button class="rail-link" data-tab="browse">Browse</button>
         <button class="rail-link" data-tab="saves">Saves</button>
         <button class="rail-link" data-tab="profiles">Profiles</button>
         <button class="rail-link" data-tab="settings">Settings</button>
@@ -45,6 +46,30 @@
           </div>
           <p class="hint" id="mods-hint"></p>
           <div id="mods-list" class="list"></div>
+        </section>
+
+        <section class="tab" id="tab-browse" hidden>
+          <div class="toolbar">
+            <h2>Browse</h2>
+            <div class="toolbar-actions">
+              <input id="browse-q" class="input" type="search" placeholder="Search the mod site…" />
+              <select id="browse-sort" class="input" aria-label="Sort by">
+                <option value="downloads">Most downloaded</option>
+                <option value="rating">Best rated</option>
+                <option value="updated">Recently updated</option>
+                <option value="newest">Newest</option>
+              </select>
+              <select id="browse-cat" class="input" aria-label="Category">
+                <option value="0">All categories</option>
+              </select>
+              <button id="browse-refresh" class="btn" type="button">Refresh</button>
+            </div>
+          </div>
+          <p class="hint" id="browse-hint">Mods come from mods.sm64coopdx.com. The loader asks before installing.</p>
+          <div id="browse-list" class="browse-list"></div>
+          <div class="browse-more">
+            <button id="browse-more" class="btn" type="button" hidden>Load more</button>
+          </div>
         </section>
 
         <section class="tab" id="tab-saves" hidden>

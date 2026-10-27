@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,7 +18,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -109,6 +112,7 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer svc.Close()
 	srv, err := server.New(svc)
 	if err != nil {
 		return err
@@ -132,6 +136,16 @@ func serve(args []string) error {
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = httpServer.Shutdown(shutCtx)
+	}()
+
 	err = httpServer.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
