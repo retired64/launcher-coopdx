@@ -30,6 +30,12 @@ Un solo binario, sin dependencias externas, con una interfaz web local.
 | Copia de mods/aspecto/partidas entre dispositivos | ⏳ fase 4 |
 | Tema visual desde la ROM + visor 3D | ⏳ fase 5 |
 
+## Vista
+
+| Mods | Partidas |
+|---|---|
+| ![Mods](docs/preview-mods.png) | ![Partidas](docs/preview-saves.png) |
+
 ## Empezar
 
 Necesitas **Go 1.24 o superior**. No hay dependencias que descargar.
