@@ -18,12 +18,14 @@
 
       <div class="top-status">
         <span id="game-chip" class="chip">checking…</span>
-        <button id="play" class="btn btn-accent" type="button">Play</button>
+        <button id="session-pill" class="btn btn-sm session-pill" type="button" hidden></button>
+        <button id="play" class="btn btn-accent" type="button">Launch game</button>
       </div>
     </header>
 
     <div class="shell">
       <nav class="rail" aria-label="Sections">
+        <button class="rail-link" data-tab="play">Play</button>
         <button class="rail-link" data-tab="mods" aria-current="page">Mods</button>
         <button class="rail-link" data-tab="browse">Browse</button>
         <button class="rail-link" data-tab="saves">Saves</button>
@@ -35,6 +37,26 @@
       </nav>
 
       <main class="view">
+        <section class="tab" id="tab-play" hidden>
+          <div class="toolbar">
+            <h2>Play with friends</h2>
+            <span id="session-chip" class="chip" hidden></span>
+          </div>
+          <p class="hint">
+            Both players need the same mods on. The loader connects the two games
+            directly when it can, through the relay when it cannot.
+          </p>
+          <div id="session-panel" class="session-panel"></div>
+          <details class="card session-log-card" id="session-log-card">
+            <summary>Connection log</summary>
+            <p class="hint">
+              Peer ids are shortened. The room code and the SDPs are never
+              written here.
+            </p>
+            <pre id="session-log" class="session-log">Open a session to see the log.</pre>
+          </details>
+        </section>
+
         <section class="tab" id="tab-mods">
           <div class="toolbar">
             <h2>Mods</h2>

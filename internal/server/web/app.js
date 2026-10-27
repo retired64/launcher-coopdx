@@ -29,6 +29,19 @@
     profiles: null,
     filter: "",
     tab: "mods",
+    session: null,
+    sessionKey: "",
+    sessionBusy: false,
+    sessionLaunching: false,
+    sessionTried: "",
+    sessionLaunchedFor: "",
+    sessionLaunchedAt: 0,
+    lastRunning: false,
+    lastSessionGameIn: false,
+    sessionAuto: true,
+    host: { slot: 1, players: 4 },
+    hostSlotLoaded: false,
+    joinDraft: "",
     browse: {
       q: "",
       sort: "downloads",
@@ -110,8 +123,24 @@
 
     $("#version").textContent = "v" + st.version;
     $("#play").disabled = !st.gameFound;
+    const runningChanged = state.lastRunning !== !!st.running;
+    if (state.lastRunning && !st.running) {
+      state.sessionLaunchedFor = "";
+      state.sessionLaunchedAt = 0;
+    }
+    state.lastRunning = !!st.running;
+    if (runningChanged && state.session) renderSession();
+    if (state.sessionLaunchedFor && !st.running &&
+        Date.now() - state.sessionLaunchedAt > 8000) {
+      state.sessionLaunchedFor = "";
+      if (state.session) renderSession();
+    }
     $("#close-on-play").checked = !!st.closeOnPlay;
 
+    if (!state.hostSlotLoaded && st.hostSlot >= 1 && st.hostSlot <= 4) {
+      state.host.slot = st.hostSlot;
+      state.hostSlotLoaded = true;
+    }
     if (document.activeElement !== $("#game-path")) {
       $("#game-path").value = st.gamePath || "";
     }
@@ -663,6 +692,565 @@
     await guard(() => postJSON("/api/open-external", { url }));
   }
 
+
+  // ---------- play with friends ----------
+
+  const NET_TERMS = 2;
+  const RECENT_CODES = "recentJoinCodes";
+  const AUTO_OPEN = "autoOpenGame";
+  const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+  state.sessionAuto = (() => {
+    try { return localStorage.getItem(AUTO_OPEN) !== "off"; } catch { return true; }
+  })();
+
+  function normalizeCode(raw) {
+    const clean = String(raw || "")
+      .toUpperCase()
+      .replace(/[\s_-]/g, "")
+      .replace(/O/g, "0")
+      .replace(/[IL]/g, "1")
+      .replace(/U/g, "V");
+    if (!/^[0-9A-HJKMNP-TV-Z]{8}$/.test(clean)) return null;
+    return clean.slice(0, 4) + "-" + clean.slice(4);
+  }
+
+  function recentCodes() {
+    try {
+      const list = JSON.parse(localStorage.getItem(RECENT_CODES) || "[]");
+      return Array.isArray(list) ? list.filter((c) => normalizeCode(c)) : [];
+    } catch { return []; }
+  }
+
+  function rememberCode(code) {
+    try {
+      const next = [code, ...recentCodes().filter((c) => c !== code)].slice(0, 4);
+      localStorage.setItem(RECENT_CODES, JSON.stringify(next));
+    } catch { /* storage disabled */ }
+  }
+
+  async function copyCode(code) {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast("Code copied.", "ok");
+    } catch {
+      toast("Could not copy the code. Select it and copy it by hand.", "bad");
+    }
+  }
+
+  function ensureConsent() {
+    const consent = state.status && state.status.netConsent;
+    if (consent && consent.accepted && consent.termsVersion === NET_TERMS) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      let answered = false;
+      const dialog = el("dialog", { class: "dialog session-consent" });
+      const finish = async (accepted) => {
+        if (answered) return;
+        answered = true;
+        dialog.close();
+        dialog.remove();
+        if (accepted) {
+          try {
+            await postJSON("/api/settings/netconsent", { accepted: true, termsVersion: NET_TERMS });
+            if (state.status) state.status.netConsent = { accepted: true, termsVersion: NET_TERMS };
+          } catch (err) {
+            toast(err.message || "Could not save that choice.", "bad");
+            resolve(false);
+            return;
+          }
+        }
+        resolve(accepted);
+      };
+      dialog.append(
+        el("h3", {}, "Play with friends using the connection helper"),
+        el("p", {},
+          "The connection helper links your game to your friend's through this app, so nobody needs a VPN, router settings or CoopNet."
+        ),
+        el("ul", { class: "consent-list" },
+          el("li", {}, "You get a code, and your friend types it in."),
+          el("li", {}, "The two apps find each other through public WebTorrent trackers and this app's relay on Cloudflare. What they exchange is locked with your code."),
+          el("li", {}, "Your internet address is shared with those meeting points, the relay and the address-lookup services of Google and Cloudflare. Your game traffic only goes directly to your friend; the relay is used only when a direct route is impossible.")
+        ),
+        el("p", { class: "hint" },
+          "If you say no, you can still play online the usual way: CoopNet or Direct Connection in the game's own menu."
+        ),
+        el("div", { class: "dialog-actions" },
+          el("button", { class: "btn", type: "button", onclick: () => finish(false) }, "Not now"),
+          el("button", { class: "btn btn-accent", type: "button", onclick: () => finish(true) }, "Use the connection helper")
+        )
+      );
+      dialog.addEventListener("cancel", (ev) => { ev.preventDefault(); finish(false); });
+      dialog.addEventListener("close", () => {
+        if (!answered) { answered = true; resolve(false); }
+      });
+      document.body.append(dialog);
+      dialog.showModal();
+    });
+  }
+
+  async function refreshSession(force) {
+    let data;
+    try {
+      data = await api("/api/session/state");
+    } catch {
+      return;
+    }
+    const next = data.session || null;
+    const key = next ? JSON.stringify(next) : "";
+    const changed = key !== state.sessionKey;
+    const nowIn = !!(next && next.gameIn);
+    if (state.lastSessionGameIn && !nowIn) {
+      // The game closed; the room stayed up and can open it again. Do not
+      // clear sessionTried: auto-open happens once per room, not after every
+      // game exit.
+      state.sessionLaunchedFor = "";
+      state.sessionLaunchedAt = 0;
+    }
+    state.lastSessionGameIn = nowIn;
+    state.session = next;
+    state.sessionKey = key;
+    if (changed || force) {
+      if (!next && state.tab !== "play") {
+        // The panel is not visible, but the header pill must go away.
+        renderSessionPill();
+      } else {
+        renderSession();
+      }
+    }
+    maybeAutoLaunch();
+    if (state.tab === "play") {
+      const details = $("#session-log-card");
+      if (details && details.open) refreshSessionLogs().catch(() => {});
+    }
+  }
+
+  function renderSessionPill() {
+    const pill = $("#session-pill");
+    const s = state.session;
+    if (!s) {
+      pill.hidden = true;
+      return;
+    }
+    pill.hidden = false;
+    let text = "Session";
+    if (s.mode === "host") text = `Hosting · ${s.code}`;
+    else if (s.phase === "connected") text = "Playing with a friend";
+    else if (s.phase === "failed") text = "Not connected";
+    else text = "Connecting to a friend…";
+    if (s.phase === "stopped") text = "Session stopped";
+    pill.textContent = text;
+  }
+
+  async function refreshSessionLogs() {
+    const data = await api("/api/session/logs");
+    const lines = data.logs || [];
+    $("#session-log").textContent = lines.length
+      ? lines.slice(-400).join("\n")
+      : "No log lines yet.";
+  }
+
+  async function startHost() {
+    if (state.sessionBusy) return;
+    if (!(await ensureConsent())) return;
+    state.sessionBusy = true;
+    renderSession();
+    try {
+      const data = await postJSON("/api/session/start", { mode: "host", code: "" });
+      state.session = data.session;
+      state.sessionTried = "";
+      state.sessionLaunchedFor = "";
+      state.sessionKey = JSON.stringify(data.session);
+      renderSession();
+      copyCode(data.session.code);
+    } catch (err) {
+      toast("Couldn't start hosting. " + (err.message || err), "bad");
+    } finally {
+      state.sessionBusy = false;
+      renderSession();
+    }
+  }
+
+  async function startJoin(raw) {
+    const code = normalizeCode(raw);
+    if (!code) {
+      toast("That doesn't look like a code. It has 8 letters and numbers, like K7QD-9XPA.", "bad");
+      return;
+    }
+    if (!(await ensureConsent())) return;
+    state.sessionBusy = true;
+    state.joinDraft = code;
+    rememberCode(code);
+    renderSession();
+    try {
+      const data = await postJSON("/api/session/start", { mode: "join", code });
+      state.session = data.session;
+      state.sessionTried = "";
+      state.sessionLaunchedFor = "";
+      state.sessionKey = JSON.stringify(data.session);
+      renderSession();
+    } catch (err) {
+      toast("Couldn't start. " + (err.message || err), "bad");
+    } finally {
+      state.sessionBusy = false;
+      renderSession();
+    }
+  }
+
+  async function stopSession(quiet) {
+    if (state.sessionBusy) return;
+    state.sessionBusy = true;
+    renderSession();
+    const code = state.session && state.session.code;
+    if (code) state.joinDraft = code;
+    try {
+      await postJSON("/api/session/stop", {});
+    } catch (err) {
+      toast(err.message || "Could not stop the session.", "bad");
+    } finally {
+      state.session = null;
+      state.sessionKey = "";
+      state.sessionTried = "";
+      state.sessionLaunchedFor = "";
+      state.lastSessionGameIn = false;
+      state.sessionBusy = false;
+      renderSession();
+    }
+    if (!quiet) toast("Session stopped.", "ok");
+  }
+
+  async function launchSession() {
+    if (!state.session || state.sessionLaunching) return;
+    state.sessionLaunching = true;
+    renderSession();
+    try {
+      const data = await postJSON("/api/session/launch", {
+        slot: state.host.slot,
+        players: state.host.players,
+      });
+      state.session = data.session;
+      state.sessionKey = JSON.stringify(data.session);
+      state.sessionLaunchedFor = state.session.code || "";
+      state.sessionLaunchedAt = Date.now();
+      toast("Opening the game…", "ok");
+    } catch (err) {
+      toast(err.message || "Could not start the game.", "bad");
+    } finally {
+      state.sessionLaunching = false;
+      renderSession();
+    }
+  }
+
+  function maybeAutoLaunch() {
+    const s = state.session;
+    if (!s || !state.sessionAuto || state.sessionLaunching || s.gameIn) return;
+    if (state.status && state.status.running) return;
+    if (s.phase === "failed" || s.phase === "stopped") return;
+    const friend = s.friends && s.friends[0];
+    const ready = s.mode === "host"
+      ? !!(s.friends && s.friends.length)
+      : (s.phase === "connected" && friend && !friend.reconnecting && friend.game !== false);
+    if (!ready) return;
+    if (state.sessionTried === s.code) return;
+    state.sessionTried = s.code;
+    launchSession();
+  }
+
+  function sessionStep(n, title, ...kids) {
+    return el("section", { class: "step" },
+      el("div", { class: "step-head" },
+        el("span", { class: "step-num", "aria-hidden": "true" }, String(n)),
+        el("h3", { class: "step-title" }, title)
+      ),
+      ...kids
+    );
+  }
+
+  function hostStatus(s) {
+    if (s.phase === "failed") return s.message || "Couldn't start hosting.";
+    if (s.trackers === 0) return "Getting online…";
+    if (!s.friends.length) return "Online. Waiting for friends to join…";
+    return s.friends.length === 1
+      ? "1 friend is playing."
+      : `${s.friends.length} friends are playing.`;
+  }
+
+  function friendRows(friends) {
+    if (!friends || !friends.length) {
+      return el("p", { class: "caption" }, "Nobody yet. They join with your code.");
+    }
+    return el("div", { class: "session-friends" }, ...friends.map((f) => {
+      const route = f.reconnecting
+        ? "reconnecting"
+        : f.route === "relay"
+          ? "relay"
+          : f.route === "direct"
+            ? "direct"
+            : "route unknown";
+      return el("div", { class: "session-friend" },
+        el("span", { class: "session-friend-id" }, String(f.id).slice(0, 6)),
+        el("span", { class: "tag " + (f.reconnecting ? "pack" : "") }, route),
+        el("span", { class: "caption" },
+          f.game === true ? "game in" : f.game === false ? "game not open" : "waiting for their game"
+        )
+      );
+    }));
+  }
+
+  function autoChoice() {
+    return el("label", { class: "field-label" }, "Game opens",
+      el("select", {
+        class: "input",
+        onchange: (ev) => {
+          state.sessionAuto = ev.target.value === "auto";
+          try { localStorage.setItem(AUTO_OPEN, state.sessionAuto ? "on" : "off"); } catch { /* ignore */ }
+        },
+      },
+        el("option", { value: "auto", selected: state.sessionAuto ? "selected" : null }, "By itself"),
+        el("option", { value: "manual", selected: state.sessionAuto ? null : "selected" }, "When I choose")
+      )
+    );
+  }
+
+  function introView() {
+    const hostSlot = el("select", {
+      class: "input",
+      onchange: (ev) => { state.host.slot = Number(ev.target.value); },
+    }, ...[1, 2, 3, 4].map((n) => el("option", { value: String(n), selected: state.host.slot === n ? "selected" : null }, String(n))));
+
+    const hostPlayers = el("select", {
+      class: "input",
+      onchange: (ev) => { state.host.players = Number(ev.target.value); },
+    }, ...[2, 4, 8, 16].map((n) => el("option", { value: String(n), selected: state.host.players === n ? "selected" : null }, String(n))));
+
+    const hostCard = el("div", { class: "session-card" },
+      el("h3", {}, "Host a game"),
+      el("p", {}, "You get a code. Your friends type it in and their games join yours."),
+      el("div", { class: "session-options" },
+        el("label", { class: "field-label" }, "Save file", hostSlot),
+        el("label", { class: "field-label" }, "Players", hostPlayers),
+        autoChoice()
+      ),
+      el("div", { class: "session-actions" },
+        el("button", {
+          class: "btn btn-accent",
+          type: "button",
+          disabled: state.sessionBusy,
+          onclick: () => guard(startHost),
+        }, state.sessionBusy ? "Starting…" : "Host a game")
+      ),
+      el("p", { class: "hint" }, "Both players need the same mods on. The game opens on port 7777.")
+    );
+
+    const input = el("input", {
+      class: "input join-input",
+      type: "text",
+      maxlength: "12",
+      spellcheck: "false",
+      autocomplete: "off",
+      placeholder: "ABCD-1234",
+      "aria-label": "Code from your friend",
+      value: state.joinDraft || "",
+      oninput: (ev) => { state.joinDraft = ev.target.value; },
+      onkeydown: (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); guard(() => startJoin(ev.target.value)); }
+      },
+    });
+
+    const recents = recentCodes();
+    const recentRow = recents.length
+      ? el("div", { class: "recent-codes" },
+          el("span", { class: "caption" }, "Recent:"),
+          ...recents.map((code) => el("button", {
+            class: "btn btn-sm",
+            type: "button",
+            onclick: () => guard(() => startJoin(code)),
+          }, code))
+        )
+      : null;
+
+    const joinCard = el("div", { class: "session-card" },
+      el("h3", {}, "Join a game"),
+      el("p", {}, "Type the code your friend got when they pressed Host a game."),
+      input,
+      recentRow,
+      el("div", { class: "session-actions" },
+        el("button", {
+          class: "btn btn-accent",
+          type: "button",
+          disabled: state.sessionBusy,
+          onclick: () => guard(() => startJoin(input.value)),
+        }, state.sessionBusy ? "Starting…" : "Join")
+      ),
+      el("p", { class: "hint" }, "The code is the key to the room. Treat it like a password.")
+    );
+
+    return [el("div", { class: "session-grid" }, hostCard, joinCard)];
+  }
+
+  function hostView(s) {
+    const copy = el("button", { class: "btn", type: "button", onclick: () => copyCode(s.code) }, "Copy code");
+    const launched = state.sessionLaunchedFor === s.code;
+    const open = el("button", {
+      class: "btn btn-accent",
+      type: "button",
+      disabled: s.gameIn || launched || state.sessionLaunching || !!(state.status && state.status.running),
+      onclick: () => guard(launchSession),
+    }, s.gameIn ? "Game is open" : launched ? "Waiting for your game…" : (state.status && state.status.running) ? "Game is running" : state.sessionLaunching ? "Opening…" : "Open the game");
+
+    const runningNote = !s.gameIn && state.status && state.status.running
+      ? el("p", { class: "hint" }, "The game is already open without the room. Close it, then open it from here.")
+      : null;
+
+    const options = s.gameIn ? null : el("div", { class: "session-options" },
+      el("label", { class: "field-label" }, "Save file",
+        el("select", {
+          class: "input",
+          onchange: (ev) => { state.host.slot = Number(ev.target.value); },
+        }, ...[1, 2, 3, 4].map((n) => el("option", { value: String(n), selected: state.host.slot === n ? "selected" : null }, String(n))))
+      ),
+      el("label", { class: "field-label" }, "Players",
+        el("select", {
+          class: "input",
+          onchange: (ev) => { state.host.players = Number(ev.target.value); },
+        }, ...[2, 4, 8, 16].map((n) => el("option", { value: String(n), selected: state.host.players === n ? "selected" : null }, String(n))))
+      ),
+      autoChoice()
+    );
+
+    return [
+      el("div", { class: "session-head" },
+        el("div", {},
+          el("p", { class: "session-kicker" }, "Hosting"),
+          el("code", { class: "session-code", tabindex: "0" }, s.code)
+        ),
+        el("div", { class: "session-head-actions" }, copy)
+      ),
+      sessionStep(1, "Send this code to your friends",
+        el("p", { class: "status-line" }, hostStatus(s))
+      ),
+      sessionStep(2, "Open the game", options,
+        el("div", { class: "session-actions" }, open),
+        runningNote
+      ),
+      sessionStep(3, "Your friends", friendRows(s.friends)),
+      el("div", { class: "session-actions" },
+        el("button", {
+          class: "btn btn-danger",
+          type: "button",
+          disabled: state.sessionBusy,
+          onclick: () => { if (confirm("Stop hosting? Your friends leave the game.")) guard(() => stopSession()); },
+        }, "Stop hosting")
+      ),
+      el("p", { class: "hint" }, s.trackers > 0
+        ? `${s.trackers} meeting point${s.trackers === 1 ? "" : "s"} online.`
+        : "Trying to reach the meeting points…")
+    ];
+  }
+
+  function joinStatus(s) {
+    if (s.phase === "failed") return s.message || "Couldn't connect.";
+    if (s.phase === "connected") {
+      const f = s.friends && s.friends[0];
+      if (f && f.reconnecting) return "The connection dropped. Reconnecting… Your place in the game is kept for a minute.";
+      if (f && f.route === "relay") return "Found your friend, through the relay.";
+      return "Found your friend.";
+    }
+    if (s.trackers === 0) return "Getting online…";
+    return "Looking for your friend…";
+  }
+
+  function joinView(s) {
+    const f = s.friends && s.friends[0];
+    const ready = s.phase === "connected" && f && !f.reconnecting && f.game !== false;
+    const launched = state.sessionLaunchedFor === s.code;
+    const open = el("button", {
+      class: "btn btn-accent",
+      type: "button",
+      disabled: !ready || s.gameIn || launched || state.sessionLaunching || !!(state.status && state.status.running),
+      onclick: () => guard(launchSession),
+    }, s.gameIn ? "Game is open" : launched ? "Waiting for your game…" : (state.status && state.status.running) ? "Game is running" : state.sessionLaunching ? "Opening…" : "Open the game");
+
+    const gameLine = s.gameIn
+      ? "Your game is in."
+      : f && f.game === false
+        ? "Your friend hasn't opened their game yet."
+        : ready
+          ? "Your friend is there. Open the game when you're ready."
+          : "You can open it once your friend is found.";
+
+    const actions = s.phase === "failed"
+      ? [el("button", {
+          class: "btn btn-accent",
+          type: "button",
+          onclick: () => guard(async () => {
+            state.joinDraft = s.code;
+            await stopSession(true);
+          }),
+        }, "Try again")]
+      : [el("button", {
+          class: "btn",
+          type: "button",
+          disabled: state.sessionBusy,
+          onclick: () => guard(() => stopSession()),
+        }, "Leave")];
+
+    return [
+      el("div", { class: "session-head" },
+        el("div", {},
+          el("p", { class: "session-kicker" }, "Joining"),
+          el("code", { class: "session-code", tabindex: "0" }, s.code)
+        )
+      ),
+      sessionStep(1, "Your friend's code",
+        el("p", { class: "status-line" }, joinStatus(s))
+      ),
+      sessionStep(2, "Open the game",
+        el("p", { class: "caption" }, gameLine),
+        autoChoice(),
+        el("div", { class: "session-actions" }, open),
+        !s.gameIn && state.status && state.status.running
+          ? el("p", { class: "hint" }, "The game is already open without the room. Close it, then open it from here.")
+          : null
+      ),
+      el("div", { class: "session-actions" }, ...actions),
+      el("p", { class: "hint" }, s.trackers > 0
+        ? `${s.trackers} meeting point${s.trackers === 1 ? "" : "s"} online.`
+        : "Trying to reach the meeting points…")
+    ];
+  }
+
+  function renderSession() {
+    const panel = $("#session-panel");
+    const s = state.session;
+    if (s) {
+      panel.replaceChildren(...(s.mode === "host" ? hostView(s) : joinView(s)));
+    } else {
+      panel.replaceChildren(...introView());
+    }
+    const chip = $("#session-chip");
+    if (s) {
+      chip.hidden = false;
+      if (s.mode === "host") {
+        chip.textContent = `Hosting · ${s.code}`;
+        chip.className = "chip ok";
+      } else if (s.phase === "connected") {
+        chip.textContent = "Connected";
+        chip.className = "chip ok";
+      } else if (s.phase === "failed") {
+        chip.textContent = "Not connected";
+        chip.className = "chip bad";
+      } else {
+        chip.textContent = "Connecting…";
+        chip.className = "chip busy";
+      }
+    } else {
+      chip.hidden = true;
+    }
+    renderSessionPill();
+  }
+
   // ---------- saves ----------
 
   async function loadSaves() {
@@ -838,6 +1426,12 @@
   }
 
   async function launchGame() {
+    // With a room open, the header button must use the room's arguments
+    // (--server/--client); a plain launch would bypass the bridge.
+    if (state.session && state.session.phase !== "stopped") {
+      await guard(launchSession);
+      return;
+    }
     await guard(async () => {
       await postJSON("/api/game/launch", {});
       toast("Starting the game…", "ok");
@@ -856,6 +1450,11 @@
     for (const section of document.querySelectorAll(".tab")) {
       section.hidden = section.id !== "tab-" + name;
     }
+    if (name === "play") guard(async () => {
+      await refreshSession(true);
+      const details = $("#session-log-card");
+      if (details && details.open) await refreshSessionLogs();
+    });
     if (name === "browse") guard(async () => {
       await loadCategories();
       if (!state.browse.loaded) await loadBrowse(true);
@@ -905,6 +1504,10 @@
     $("#game-save").addEventListener("click", saveGamePath);
     $("#game-detect").addEventListener("click", detectGame);
     $("#close-on-play").addEventListener("change", (ev) => setCloseOnPlay(ev.target.checked));
+    $("#session-pill").addEventListener("click", () => showTab("play"));
+    $("#session-log-card").addEventListener("toggle", (ev) => {
+      if (ev.target.open) guard(refreshSessionLogs);
+    });
     $("#profile-create").addEventListener("click", () => guard(async () => {
       const input = $("#profile-name");
       const name = input.value.trim();
@@ -924,10 +1527,15 @@
     try {
       await refreshStatus();
       await Promise.all([loadMods(), loadSaves(), loadProfiles()]);
+      await refreshSession(true).catch(() => {});
+      renderSession();
     } catch (err) {
       toast(err.message || "Could not talk to the loader.", "bad");
     }
     setInterval(() => refreshStatus().catch(() => {}), 5000);
+    setInterval(() => {
+      if (state.tab === "play" || state.session) refreshSession().catch(() => {});
+    }, 1000);
   }
 
   boot();

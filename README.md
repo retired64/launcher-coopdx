@@ -3,10 +3,11 @@
 Un gestor de mods, partidas y perfiles para **SM64 Coop Deluxe**, escrito en Go.
 Un solo binario, sin cgo, con una interfaz web local.
 
-> **Estado:** fases 0–2. Mods, catálogo, descargas, dependencias, perfiles,
-> partidas y ajustes funcionan. La sesión P2P (WebRTC) es la siguiente fase.
+> **Estado:** fases 0–3. Mods, catálogo, dependencias, perfiles, partidas,
+> ajustes y **juego online por código** (WebRTC + puente UDP) funcionan. La
+> copia entre dispositivos es la siguiente fase.
 
-[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Protocolo](docs/PROTOCOL.md)
+[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md)
 
 ---
 
@@ -28,7 +29,9 @@ Un solo binario, sin cgo, con una interfaz web local.
 | Instalar desde el sitio + actualizar + procedencia | ✅ |
 | Dependencias Lua: quién provee `_G.X` y qué falta | ✅ |
 | Interfaz web local con token | ✅ |
-| Sesión P2P por código (WebRTC + puente UDP) | ⏳ fase 3 |
+| Sesión P2P por código (WebRTC + puente UDP 7777) | ✅ |
+| Reconexión con retención del lugar (`STILL_HERE`) | ✅ |
+| Consentimiento, ruta directa/relé y registro de conexión | ✅ |
 | Copia de mods/aspecto/partidas entre dispositivos | ⏳ fase 4 |
 | Tema visual desde la ROM + visor 3D | ⏳ fase 5 |
 
@@ -42,9 +45,19 @@ Un solo binario, sin cgo, con una interfaz web local.
 |---|---|
 | ![Partidas](docs/preview-saves.png) | ![Ficha](docs/preview-detail.png) |
 
+| Play: crear o unirse | Anfitrión conectado |
+|---|---|
+| ![Play](docs/preview-play.png) | ![Anfitrión](docs/preview-play-host.png) |
+
+| Unido a un amigo | |
+|---|---|
+| ![Unirse](docs/preview-play-join.png) | |
+
 ## Empezar
 
-Necesitas **Go 1.25 o superior**. La única dependencia es `goquery`, para leer el HTML del sitio; `go build` la baja sola.
+Necesitas **Go 1.25 o superior**. Las dependencias (`goquery` para el sitio,
+`pion/webrtc` para las conexiones y `coder/websocket` para los trackers) las
+baja `go build` solo. No hay cgo ni bibliotecas del sistema.
 
 ```bash
 git clone https://github.com/retired64/coop-loader
@@ -108,6 +121,44 @@ La pestaña **Browse** sí usa Internet (lee el sitio de mods), pero no descarga
 nada hasta que pulsas *Install*. La caché vive en el `XDG_CONFIG_HOME` del
 entorno de prueba.
 
+## Jugar con amigos (fase 3)
+
+En la pestaña **Play** hay dos caminos:
+
+1. **Host a game.** El loader crea un código `ABCD-1234`, lo copia al
+   portapapeles y se queda esperando en los puntos de encuentro.
+2. **Join a game.** El amigo escribe el código. Los dos clientes derivan la
+   misma sala con PBKDF2 y se encuentran sin abrir puertos en el router.
+
+Cuando la sesión dice **Connected**, cualquiera de los dos pulsa **Open the
+game**. En el juego hay que elegir **Direct Connection**:
+
+- anfitrión: **Host → Direct Connection → Host**;
+- amigo: **Join → Direct Connection → Join** con `localhost` o `127.0.0.1`.
+
+El aviso de *port forwarding* se ignora: el puente UDP hace ese trabajo. Los
+dos jugadores necesitan **los mismos mods activos**; el loader no los copia
+todavía (eso es la fase 4).
+
+Puntos importantes:
+
+- **El código es la contraseña.** Son 40 bits; no lo publiques ni lo reutilices
+  para varias partidas.
+- **Se pide consentimiento la primera vez**, porque la IP se comparte con los
+  trackers públicos, el relay y los servidores STUN.
+- **Ruta directa o relay.** La UI muestra `direct` o `relay` por amigo. Si la
+  red no permite el P2P, el tráfico pasa por el relay de Cloudflare.
+- **Reconexión con retención.** Si el enlace se cae, el juego sigue recibiendo
+  `STILL_HERE` durante un minuto y los paquetes de estado se reenvían al volver.
+- **Abrir solo cuando haga falta.** Se puede elegir que el juego se abra solo
+  cuando el amigo aparece, o abrirlo a mano.
+- **Relay propio.** `COOP_RELAY_URL=https://tu-worker` cambia el punto de
+  encuentro; `COOP_NO_TRACKERS=1` desactiva los cuatro trackers públicos.
+
+El protocolo exacto, los temporizadores y la máquina de estados están en
+[docs/SESSION.md](docs/SESSION.md). El contrato de red, en
+[docs/PROTOCOL.md](docs/PROTOCOL.md).
+
 ## Catálogo y dependencias
 
 La pestaña **Browse** lee el sitio `mods.sm64coopdx.com`. Como el sitio no tiene
@@ -155,8 +206,8 @@ Respeta las carpetas que usa el propio juego:
 | macOS | `~/Library/Application Support/sm64coopdx` |
 
 Ahí viven `mods/`, `dynos/packs/`, `palettes/`, `sm64config.txt` y
-`sm64_save_file.bin`. El loader guarda sus ajustes y perfiles en
-`<config>/coop-loader/`.
+`sm64_save_file.bin`. El loader guarda sus ajustes, perfiles, procedencia del
+sitio y el consentimiento online en `<config>/coop-loader/`.
 
 ## Seguridad de los datos
 
@@ -172,18 +223,26 @@ Tres reglas que el código respeta en todas las escrituras:
 Además, al instalar: se rechazan rutas que escapan (`zip-slip`), se limitan
 20 000 entradas y 2 GiB, y se pide confirmación si el mod trae Lua compilado.
 
+En la sesión online no se escribe nada del juego: el loader solo abre sockets
+loopback y mueve datagramas. Antes de lanzar como anfitrión guarda
+`coop_host_save_slot` y `coop_host_port` en `sm64config.txt`, con la misma
+escritura atómica y la misma copia de seguridad.
+
 ## Diseño
 
 - **Go, sin cgo.** El núcleo usa solo la biblioteca estándar; el catálogo añade
-  `goquery` para leer el HTML del sitio. Nada de cgo, así que el binario compila
-  en cualquier SO sin dependencias de sistema.
+  `goquery`, y la sesión `pion/webrtc` y `coder/websocket`. Nada de cgo, así que
+  el binario compila en cualquier SO sin bibliotecas del sistema.
 - **El núcleo no sabe de HTTP.** `internal/app` expone el estado y las
   operaciones; `internal/server` solo lo traduce a JSON. Mañana puede ser una
   ventana nativa (Wails) o una app Android sin tocar el núcleo.
 - **La UI es HTML/CSS/JS sin build.** Se sirve desde `embed.FS`; para cambiarla
   basta editar `internal/server/web/`.
 - **Todo lo binario está documentado y testeado** (`sm64config.txt`, la EEPROM
-  de 512 bytes, el enrutado de zips).
+  de 512 bytes, el enrutado de zips y el protocolo de la sesión).
+- **La red no vive en la UI.** `internal/session` tiene su propia máquina de
+  estados y se prueba con un relay local y sockets UDP falsos; la UI solo pinta
+  lo que devuelve `/api/session/state`.
 
 ```
 cmd/coop-loader      CLI + servidor
@@ -191,6 +250,7 @@ internal/app         casos de uso (estado, guardas, perfiles, catálogo)
 internal/catalog     sitio de mods: HTML, caché, descargas, GitHub
 internal/deps        escaneo de globales Lua y emparejamiento de nombres
 internal/installed   procedencia y versión de los mods instalados
+internal/session     código de sala, señalización, WebRTC y puente UDP
 internal/conf        sm64config.txt y perfiles
 internal/eeprom      partida de 512 bytes
 internal/mods        descubrimiento, metadatos, instalación, borrado
@@ -214,20 +274,24 @@ Cubren lo que puede corromper datos o traer código de fuera: reescritura del
 config preservando CRLF, `enable-mod`/`dynos-pack`, checksum y endianness de la
 partida, rutas de instalación y `zip-slip`, bytecode, parseo del sitio con
 fixtures HTML, caché en disco, descargas (adjunto/elección/externo), GitHub,
-escaneo de globales Lua y la resolución de dependencias de punta a punta.
+escaneo de globales Lua, la resolución de dependencias, el vector PBKDF2, el
+cifrado de SDP, el puente UDP (host/join, `STILL_HERE`, caché y reenvío), y una
+partida completa host↔join contra un relay WebSocket local.
 
 ## Roadmap
 
 | Fase | Contenido |
 |---|---|
-| 1 | catálogo del sitio + descargas + dependencias Lua | ✅ |
-| 2 | sesión por código: PBKDF2/AES-GCM, trackers, `pion/webrtc`, puente UDP 7777, reconexión |
-| 3 | copia de mods/aspecto/partidas entre PC y Android |
-| 4 | tema visual y fuentes desde la ROM del usuario |
-| 5 | visor 3D del personaje leyendo el ejecutable del juego |
-| 6 | creador de mods, test headless, empaquetado, updater firmado |
+| 0–1 | núcleo local: mods, config, perfiles, partidas, UI | ✅ |
+| 2 | catálogo del sitio + descargas + dependencias Lua | ✅ |
+| 3 | sesión por código: PBKDF2/AES-GCM, trackers, `pion/webrtc`, puente UDP 7777, reconexión | ✅ |
+| 4 | copia de mods/aspecto/partidas entre PC y Android |
+| 5 | tema visual y fuentes desde la ROM del usuario |
+| 6 | visor 3D del personaje leyendo el ejecutable del juego |
+| 7 | creador de mods, test headless, empaquetado, updater firmado |
 
-La fase 2 está especificada, byte a byte, en [docs/PROTOCOL.md](docs/PROTOCOL.md).
+La fase 3 está explicada a fondo en [docs/SESSION.md](docs/SESSION.md) y su
+contrato de red en [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Sobre este proyecto
 
@@ -250,12 +314,14 @@ bajo otra cuenta.
 ## English summary
 
 A clean-room **Go** mod manager for SM64 Coop Deluxe: local single binary with an
-embedded web UI. Phases 0–2 cover game detection, mod discovery and installation
+embedded web UI. Phases 0–3 cover game detection, mod discovery and installation
 (zip/lua), `sm64config.txt` editing with backups, profiles, the 512-byte save
-file, the community mod catalog (browse/search/install/update) and Lua global
-dependency resolution.
+file, the community mod catalog (browse/search/install/update), Lua global
+dependency resolution, and **online play by code** with a WebRTC DataChannel
+and a loopback UDP bridge. Sessions reconnect with ICE restart, relay fallback
+and a one-minute "hold their place" cache.
 
-The P2P session engine (WebRTC DataChannel + loopback UDP bridge) and the
-device-to-device copy are specified in [docs/PROTOCOL.md](docs/PROTOCOL.md) and
-planned for the next phases. Not affiliated with Nintendo or the sm64coopdx
+The device-to-device copy is the next phase. The session engine is documented in
+[docs/SESSION.md](docs/SESSION.md); the wire contract is in
+[docs/PROTOCOL.md](docs/PROTOCOL.md). Not affiliated with Nintendo or the sm64coopdx
 team; no game assets are bundled.

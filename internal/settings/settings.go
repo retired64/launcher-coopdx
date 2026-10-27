@@ -10,6 +10,14 @@ import (
 	"github.com/retired64/coop-loader/internal/fsutil"
 )
 
+// Consent is the record of the player accepting that online play shares
+// their IP with meeting points, the relay and the address-lookup services.
+type Consent struct {
+	Accepted     bool   `json:"accepted"`
+	TermsVersion int    `json:"termsVersion"`
+	At           string `json:"at,omitempty"`
+}
+
 // Settings is the JSON document stored in the loader data directory.
 type Settings struct {
 	// GamePath is the folder that contains the sm64coopdx executable.
@@ -18,6 +26,9 @@ type Settings struct {
 	CloseOnPlay bool `json:"closeOnPlay"`
 	// Profile is the last active mod profile.
 	Profile string `json:"profile"`
+	// NetConsent remembers the online-play notice; a new terms version asks
+	// again.
+	NetConsent *Consent `json:"netConsent,omitempty"`
 }
 
 // Default returns the settings used on first start.

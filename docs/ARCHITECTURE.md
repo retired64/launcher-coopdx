@@ -19,6 +19,7 @@ cmd/coop-loader        flags, salida por consola, servidor
                    ├── internal/catalog     sitio de mods: HTML, caché, descargas
                    ├── internal/deps        globales Lua: quién provee / qué falta
                    ├── internal/installed   procedencia de lo instalado
+                   ├── internal/session     sala, WebRTC y puente UDP
                    ├── internal/conf        sm64config.txt + perfiles
                    ├── internal/mods        listar, instalar, quitar
                    └── internal/eeprom      partida 512 B
@@ -32,7 +33,8 @@ Toda operación que modifica el juego pasa por estas reglas:
 
 1. **`game.Running()` primero.** Si el proceso `sm64coopdx` está vivo, se
    devuelve `ErrGameRunning` y no se toca nada. El juego reescribe
-   `sm64config.txt` al salir.
+   `sm64config.txt` al salir. La detección ignora procesos zombis (estado `Z`)
+   y `game.Launch` recoge al hijo con `Wait` para que no queden zombis.
 2. **Respaldo antes de la primera escritura.** `sm64config.txt` se copia a
    `sm64config.modloader-backup.txt` y `sm64config.modloader-original.txt`.
    `sm64_save_file.bin` se copia a `sm64_save_file.modloader-backup.bin`.
@@ -58,6 +60,8 @@ save-name: 0 Mario
 `internal/conf`:
 
 - detecta CRLF/LF y lo conserva;
+- `SetValue` escribe pares `clave valor` (por ejemplo
+  `coop_host_save_slot 3`) sin tocar el resto del archivo;
 - reemplaza el bloque completo de `enable-mod:` / `dynos-pack:` en vez de
   insertar líneas sueltas, para que el orden sea estable;
 - deduplica y descarta nombres con saltos de línea;
@@ -158,25 +162,53 @@ Es heurístico, y así se documenta en la UI: es una ayuda, no una garantía.
 - CSP estricta: la página solo carga sus propios archivos; no hay CDNs.
 - La UI no guarda estado: cada acción llama a la API y vuelve a leer.
 
-## Añadir la sesión P2P (fase 3)
+## Sesión P2P
 
-El diseño previsto, para que encaje sin reescribir el núcleo:
+`internal/session` es un motor de red completo, independiente de la UI:
 
 ```
-internal/session
-    code.go        normalización + PBKDF2 + AES-GCM
-    signal.go      WebSocket tracker (mismo JSON que los trackers públicos)
-    peer.go        pion/webrtc, DataChannel "game", ICE restart, spare
-    bridge.go      sockets UDP 127.0.0.1:7777, un puerto por peer
-    keepalive.go   paquete STILL_HERE + caché de 2 MiB
+code.go     Crockford, PBKDF2-SHA-256 (600 000), AES-256-GCM
+signal.go   un WebSocket por punto de encuentro, anuncio y respuestas
+peer.go     pion/webrtc: ofertas, respuestas, ICE, rutas y estadísticas
+engine.go   máquina de estados, heartbeats, reconexión y límites
+bridge.go   sockets UDP loopback, STILL_HERE y caché de estado
+types.go    lo que ve la API (modo, fase, amigos, ruta)
 ```
 
-`app.Service` gana `StartSession(mode, code)`, `SessionState()`,
-`StopSession()`; el servidor expone `/api/session/*`; la UI muestra el código y
-los amigos. Todo el estado de red vive en Go, no en el navegador: así se evita
-la ventana oculta y el bombeo de datagramas por IPC que usa Electron.
+Por qué vive en Go y no en el navegador:
 
-El contrato de interoperabilidad está en [PROTOCOL.md](PROTOCOL.md).
+- no hace falta una ventana oculta ni mandar cada datagrama por IPC;
+- el proceso sobrevive a cerrar o recargar la pestaña;
+- el estado se prueba con un relay local y sockets UDP falsos.
+
+Flujo:
+
+```
+StartSession(host|join, código)
+   │
+   ├─ Derive → infoHash + clave
+   ├─ Bridge.Start → puerto loopback (join) o 7777 (host)
+   ├─ Signal.Start → relay + 4 trackers
+   └─ ticker 250 ms
+          ├─ ping 500 ms por amigo
+          ├─ silencio 2 s → lost + STILL_HERE
+          ├─ ICE restart a los 6 s
+          ├─ conexión nueva a los 10 s (tras 2 intentos)
+          └─ 60 s sin ruta → drop
+```
+
+`app.Service` expone `StartSession`, `StopSession`, `SessionState`,
+`LaunchSession` y `SessionLogs`; el servidor traduce eso a
+`/api/session/state|start|stop|launch|logs`. La UI solo pinta el estado: no
+tiene WebRTC ni conoce el código más allá de mostrarlo.
+
+El host escribe `coop_host_save_slot` y `coop_host_port` en `sm64config.txt`
+antes de lanzar el juego. El join pasa el puerto efímero del puente con
+`--client 127.0.0.1 <puerto>`.
+
+Los detalles byte a byte, los temporizadores y la comparación con el cliente de
+referencia están en [SESSION.md](SESSION.md); el contrato de red, en
+[PROTOCOL.md](PROTOCOL.md).
 
 ## Decisiones y porqués
 
@@ -191,3 +223,7 @@ El contrato de interoperabilidad está en [PROTOCOL.md](PROTOCOL.md).
 | Caché y pausa de 800 ms | no castigar el sitio con decenas de peticiones |
 | Descargar solo del sitio o GitHub | un enlace de un mod no debe poder traer un binario de cualquier host |
 | Dependencias por escaneo, no por ejecución | el loader no corre código de mods fuera del juego |
+| Sesión en Go, no en el WebView | sin ventana oculta, sin IPC por datagrama, testeable |
+| Mismos temporizadores y bytes que el cliente observado | interoperar con la app existente, no inventar una variante |
+| Código de 40 bits con aviso explícito | es lo que usa la versión 2; la v3 propia subirá a 128 bits + PAKE |
+| STILL_HERE y caché de 2 MiB | un corte corto no debe expulsar al jugador |

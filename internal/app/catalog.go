@@ -57,6 +57,9 @@ func (s *Service) cat() (*catalog.Client, error) {
 
 // Close persists the site cache. Call it before the process exits.
 func (s *Service) Close() error {
+	// Give the room a chance to send its leave and close its sockets.
+	s.StopSession()
+
 	s.catalogMu.Lock()
 	defer s.catalogMu.Unlock()
 	if s.catalogCli == nil {

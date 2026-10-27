@@ -159,6 +159,47 @@ func (d *Doc) SetPacks(packs map[string]bool) {
 	d.lines = insertLines(kept, first, block)
 }
 
+// Value returns the first plain "key value" line for key.
+func (d *Doc) Value(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	prefix := key + " "
+	for _, line := range d.lines {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(line[len(prefix):])
+		}
+	}
+	return ""
+}
+
+// SetValue sets a plain "key value" line, like the reference client's writes
+// of coop_host_save_slot and coop_host_port. Unknown lines are preserved.
+func (d *Doc) SetValue(key, value string) {
+	key = strings.TrimSpace(key)
+	if key == "" || strings.ContainsAny(key, " \t\r\n") {
+		return
+	}
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\n", " "))
+	found := false
+	for i, line := range d.lines {
+		name := line
+		if j := strings.IndexByte(line, ' '); j >= 0 {
+			name = line[:j]
+		}
+		if name == key && !found {
+			d.lines[i] = key + " " + value
+			found = true
+		}
+	}
+	if found {
+		return
+	}
+	at := insertPoint(d.lines)
+	d.lines = insertLines(d.lines, at, []string{key + " " + value})
+}
+
 // SaveNames returns the four slot names ("", "A", ...) in slot order.
 func (d *Doc) SaveNames() [4]string {
 	var out [4]string

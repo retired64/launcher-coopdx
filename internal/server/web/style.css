@@ -557,3 +557,185 @@ h1 {
 .require { border: var(--px) solid var(--line); padding: 10px; background: #0002; }
 .require-head { font-weight: 600; }
 .require .btn { margin-right: 6px; margin-top: 6px; }
+
+/* ---------- play with friends ---------- */
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+.session-pill {
+  color: var(--accent);
+  border-color: #6b5a20;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-panel { display: flex; flex-direction: column; gap: 12px; }
+
+.session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.session-card {
+  padding: 16px;
+  background: var(--panel);
+  border: var(--px) solid var(--line);
+  box-shadow: 4px 4px 0 var(--shadow);
+}
+
+.session-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.session-card p { margin: 0 0 12px; color: var(--muted); }
+
+.session-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.field-label .input { min-width: 110px; }
+
+.session-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+.join-input {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 20px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  width: 100%;
+  max-width: 280px;
+}
+
+.recent-codes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.session-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background:
+    linear-gradient(135deg, #2a2340, #221e2f 60%);
+  border: var(--px) solid var(--line-hi);
+  box-shadow: 4px 4px 0 var(--shadow);
+}
+
+.session-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.session-code {
+  display: inline-block;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: clamp(26px, 5vw, 42px);
+  font-weight: 800;
+  letter-spacing: 6px;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  user-select: all;
+}
+
+.session-head-actions { display: flex; gap: 8px; padding-bottom: 4px; }
+
+.step {
+  padding: 14px 16px;
+  background: var(--panel);
+  border: var(--px) solid var(--line);
+  border-left: 6px solid var(--line-hi);
+}
+
+.step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--line);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+.step-title { margin: 0; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+.step .hint, .step .caption { margin: 6px 0 0; }
+.step p { margin: 6px 0; color: var(--muted); }
+
+.status-line { font-size: 14px; color: var(--ink) !important; }
+.status-line::before { content: "› "; color: var(--accent); }
+
+.session-friends { display: flex; flex-direction: column; gap: 6px; }
+.session-friend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  background: #0002;
+  border: 1px solid var(--line);
+}
+.session-friend-id {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.session-log-card { margin-top: 16px; }
+.session-log-card summary { cursor: pointer; font-weight: 700; letter-spacing: 1px; }
+.session-log {
+  margin: 10px 0 0;
+  padding: 10px;
+  max-height: 280px;
+  overflow: auto;
+  background: #0c0a12;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.consent-list { margin: 0 0 12px 20px; color: var(--muted); }
+.consent-list li { margin: 4px 0; }
+.session-consent { max-width: 620px; }
+
+@media (max-width: 760px) {
+  .session-head { flex-direction: column; align-items: flex-start; }
+  .session-code { letter-spacing: 3px; }
+}

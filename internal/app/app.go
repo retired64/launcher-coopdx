@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/retired64/coop-loader/internal/installed"
 	"github.com/retired64/coop-loader/internal/mods"
 	"github.com/retired64/coop-loader/internal/paths"
+	"github.com/retired64/coop-loader/internal/session"
 	"github.com/retired64/coop-loader/internal/settings"
 )
 
@@ -57,6 +59,10 @@ type Service struct {
 	catalogErr  error
 
 	records *installed.Store
+
+	sessMu      sync.Mutex
+	sessStartMu sync.Mutex
+	sess        *session.Engine
 
 	configBackup sync.Once
 }
@@ -95,17 +101,19 @@ func (s *Service) GameDataDir() string { return s.gameData }
 
 // Status is the snapshot the UI polls on start.
 type Status struct {
-	Version     string `json:"version"`
-	GamePath    string `json:"gamePath"`
-	GameFound   bool   `json:"gameFound"`
-	GameData    string `json:"gameData"`
-	LoaderDir   string `json:"loaderDir"`
-	ConfigPath  string `json:"configPath"`
-	ConfigFound bool   `json:"configFound"`
-	SavePath    string `json:"savePath"`
-	SaveFound   bool   `json:"saveFound"`
-	Running     bool   `json:"running"`
-	CloseOnPlay bool   `json:"closeOnPlay"`
+	Version     string            `json:"version"`
+	GamePath    string            `json:"gamePath"`
+	GameFound   bool              `json:"gameFound"`
+	GameData    string            `json:"gameData"`
+	LoaderDir   string            `json:"loaderDir"`
+	ConfigPath  string            `json:"configPath"`
+	ConfigFound bool              `json:"configFound"`
+	SavePath    string            `json:"savePath"`
+	SaveFound   bool              `json:"saveFound"`
+	Running     bool              `json:"running"`
+	CloseOnPlay bool              `json:"closeOnPlay"`
+	NetConsent  *settings.Consent `json:"netConsent,omitempty"`
+	HostSlot    int               `json:"hostSlot"`
 }
 
 // Status returns the current state.
@@ -130,6 +138,18 @@ func (s *Service) Status() Status {
 	}
 	if v, err := s.settings.Load(); err == nil {
 		st.CloseOnPlay = v.CloseOnPlay
+		if v.NetConsent != nil {
+			consent := *v.NetConsent
+			st.NetConsent = &consent
+		}
+	}
+	if doc, err := s.readConfigLocked(); err == nil {
+		if slot, err := strconv.Atoi(doc.Value("coop_host_save_slot")); err == nil && slot >= 1 && slot <= 4 {
+			st.HostSlot = slot
+		}
+	}
+	if st.HostSlot == 0 {
+		st.HostSlot = 1
 	}
 	return st
 }
@@ -495,6 +515,12 @@ func (s *Service) SetCloseOnPlay(on bool) error {
 
 // Launch starts the game with optional extra arguments.
 func (s *Service) Launch(args []string) error {
+	return s.LaunchNotify(args, nil)
+}
+
+// LaunchNotify starts the game and runs onExit when it closes. The callback
+// must not block.
+func (s *Service) LaunchNotify(args []string, onExit func()) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -502,7 +528,7 @@ func (s *Service) Launch(args []string) error {
 	if !game.Valid(dir) {
 		return game.ErrNotFound
 	}
-	return game.Launch(dir, args)
+	return game.LaunchNotify(dir, args, onExit)
 }
 
 // DetectGame tries the usual folders and stores the result when found.

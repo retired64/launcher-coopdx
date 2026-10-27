@@ -221,7 +221,33 @@ diseñar tu propia versión:
 - Versiona la sala (`room/v3`) y la copia (`copy/v2`), y firma el manifiesto.
 - Mantén un adaptador `v2` solo si necesitas interoperar con la app existente.
 
-## 11. Desconocidos
+## 11. Notas de implementación (Go)
+
+Detalles que no se ven en el JSON pero que hay que clavar para interoperar:
+
+- **`info_hash` en JSON.** Los 20 bytes se emiten como 20 escapes `\u00xx`
+  (cada byte = un code point). `encoding/json` con `[]byte` los convertiría a
+  Base64 y rompería la sala. En Go: `binString` en `internal/session/signal.go`.
+- **`120` es `0x78`.** Los datagramas del juego son streams `zlib`, y su primer
+  byte es 120. Por eso el protocolo usa 120 como marca de "paquete de juego" y
+  no hace falta un campo de tipo adicional.
+- **Join de escritorio.** El cliente de escritorio enlaza un puerto efímero
+  (`bind(0, 127.0.0.1)`) y se lo pasa al juego con `--client`; el APK intenta
+  primero 7777 y cae a efímero si está ocupado.
+- **Host.** No abre el 7777: lo abre el juego. Crea un socket por amigo y
+  envía a `127.0.0.1:7777`; el juego ve una dirección de origen distinta por
+  jugador.
+- **Antes de lanzar como host.** El cliente escribe `coop_host_save_slot` y
+  `coop_host_port` en `sm64config.txt`; son líneas planas, no una sección.
+- **Un solo proceso.** Este port corre la señalización y el puente en el
+  proceso del loader. No hay ventana auxiliar de Electron, así que no existe el
+  "resume" de un renderer que se cae; el estado sobrevive a recargar la UI.
+- **Relay propio.** `https://coop-mod-loader-relay.jehu-cl.workers.dev` es el
+  endpoint de referencia, no infraestructura nuestra. Para producción,
+  `COOP_RELAY_URL` debe apuntar a un Worker propio con credenciales TURN
+  efímeras.
+
+## 12. Desconocidos
 
 - Implementación, almacenamiento, TTL y rate-limit del Worker del relay.
 - Proveedor TURN real y duración de las credenciales.

@@ -187,3 +187,33 @@ func TestGameRunningBlocksWrites(t *testing.T) {
 		t.Fatalf("err = %v, want ErrGameRunning", err)
 	}
 }
+
+func TestSetHostConfig(t *testing.T) {
+	svc, _ := newTestService(t)
+	writeConfig(t, svc, "sound = 1\r\nunknown setting stays\r\n")
+
+	if err := svc.setHostConfig(3); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(svc.configPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		"sound = 1\r\n",
+		"unknown setting stays\r\n",
+		"coop_host_save_slot 3\r\n",
+		"coop_host_port 7777\r\n",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("config lacks %q:\n%s", want, text)
+		}
+	}
+	if !strings.Contains(text, "\r\n") || strings.Contains(strings.ReplaceAll(text, "\r\n", ""), "\n") {
+		t.Errorf("line endings changed:\n%q", text)
+	}
+	if st := svc.Status(); st.HostSlot != 3 {
+		t.Errorf("Status.HostSlot = %d", st.HostSlot)
+	}
+}

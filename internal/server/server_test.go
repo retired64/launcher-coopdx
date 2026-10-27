@@ -12,6 +12,7 @@ import (
 
 	"github.com/retired64/coop-loader/internal/app"
 	"github.com/retired64/coop-loader/internal/game"
+	"github.com/retired64/coop-loader/internal/session"
 )
 
 func newTestServer(t *testing.T) (*Server, *app.Service) {
@@ -132,5 +133,106 @@ func TestModsEndpointReturnsArray(t *testing.T) {
 	}
 	if out.Mods == nil {
 		t.Fatal("mods should be an array, not null")
+	}
+}
+
+func doJSON(t *testing.T, url, token, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Token", token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
+func TestSessionAPI(t *testing.T) {
+	// Keep the test offline: no public trackers, and a relay that refuses.
+	t.Setenv("COOP_NO_TRACKERS", "1")
+	t.Setenv("COOP_RELAY_URL", "http://127.0.0.1:1")
+
+	srv, _ := newTestServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp := do(t, http.MethodGet, ts.URL+"/api/session/state", srv.Token(), "")
+	var idle struct {
+		Session *session.State `json:"session"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&idle); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if idle.Session != nil {
+		t.Fatalf("idle session = %+v", idle.Session)
+	}
+
+	resp = doJSON(t, ts.URL+"/api/session/start", srv.Token(), `{"mode":"join","code":"NOPE"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad code status = %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	resp = doJSON(t, ts.URL+"/api/session/start", srv.Token(), `{"mode":"host","code":"ABCD-1234"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start host status = %d", resp.StatusCode)
+	}
+	var started struct {
+		Session session.State `json:"session"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&started); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if started.Session.Mode != "host" || started.Session.Code != "ABCD-1234" {
+		t.Fatalf("session = %+v", started.Session)
+	}
+	if started.Session.Phase != "waiting" {
+		t.Fatalf("phase = %q", started.Session.Phase)
+	}
+
+	resp = doJSON(t, ts.URL+"/api/session/stop", srv.Token(), `{}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stop status = %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	resp = do(t, http.MethodGet, ts.URL+"/api/session/state", srv.Token(), "")
+	var after struct {
+		Session *session.State `json:"session"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&after); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if after.Session != nil {
+		t.Fatalf("session after stop = %+v", after.Session)
+	}
+}
+
+func TestNetConsentAPI(t *testing.T) {
+	srv, _ := newTestServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp := doJSON(t, ts.URL+"/api/settings/netconsent", srv.Token(), `{"accepted":true,"termsVersion":2}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("consent status = %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	resp = do(t, http.MethodGet, ts.URL+"/api/status", srv.Token(), "")
+	defer resp.Body.Close()
+	var st app.Status
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.NetConsent == nil || !st.NetConsent.Accepted || st.NetConsent.TermsVersion != 2 {
+		t.Fatalf("consent = %+v", st.NetConsent)
 	}
 }

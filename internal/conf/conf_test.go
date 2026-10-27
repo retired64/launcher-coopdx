@@ -1,6 +1,9 @@
 package conf
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSetModsKeepsCRLFAndOtherLines(t *testing.T) {
 	in := "coopnet_ip = net.coop64.us\r\nenable-mod: old\r\nsound = 1\r\n\r\n"
@@ -59,5 +62,32 @@ func TestSaveNames(t *testing.T) {
 	doc.SetSaveName(1, "")
 	if got := doc.SaveNames(); got[0] != "Mario" || got[1] != "" {
 		t.Fatalf("after edit = %v", got)
+	}
+}
+
+func TestSetValuePreservesEverythingElse(t *testing.T) {
+	doc := Parse([]byte("sound = 1\r\ncoop_host_save_slot 2\r\ncustom line here\r\n"))
+	doc.SetValue("coop_host_save_slot", "3")
+	doc.SetValue("coop_host_port", "7777")
+	got := string(doc.Bytes())
+	want := "sound = 1\r\ncoop_host_save_slot 3\r\ncustom line here\r\ncoop_host_port 7777\r\n"
+	if got != want {
+		t.Fatalf("bytes = %q\nwant %q", got, want)
+	}
+
+	if got := doc.Value("coop_host_save_slot"); got != "3" {
+		t.Fatalf("Value = %q", got)
+	}
+	if got := doc.Value("missing"); got != "" {
+		t.Fatalf("missing Value = %q", got)
+	}
+
+	// The first occurrence is replaced and the key is not appended twice.
+	doc.SetValue("coop_host_port", "7778")
+	if strings.Count(string(doc.Bytes()), "coop_host_port") != 1 {
+		t.Fatalf("duplicate key: %q", doc.Bytes())
+	}
+	if !strings.Contains(string(doc.Bytes()), "coop_host_port 7778") {
+		t.Fatalf("value not replaced: %q", doc.Bytes())
 	}
 }

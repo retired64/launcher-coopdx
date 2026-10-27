@@ -3,6 +3,7 @@ package game
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -153,9 +154,16 @@ func runningLinux() bool {
 		if err != nil {
 			continue
 		}
-		if strings.TrimSpace(string(data)) == want {
-			return true
+		if strings.TrimSpace(string(data)) != want {
+			continue
 		}
+		// A process that already exited but has not been reaped is a zombie.
+		// It still shows its old name in /proc, so it must not count as a
+		// running game.
+		if stat, err := os.ReadFile(filepath.Join("/proc", e.Name(), "stat")); err == nil && procZombie(stat) {
+			continue
+		}
+		return true
 	}
 	return false
 }
@@ -163,6 +171,15 @@ func runningLinux() bool {
 // Launch starts the game detached from the loader.
 // It returns as soon as the process has started.
 func Launch(dir string, args []string) error {
+	return LaunchNotify(dir, args, nil)
+}
+
+// LaunchNotify is Launch with a callback that runs when the game exits.
+//
+// The callback runs on a background goroutine. The session engine uses it to
+// mark the game as out and forget the join-side game address, so the game can
+// be opened again without restarting the room.
+func LaunchNotify(dir string, args []string, onExit func()) error {
 	exe, ok := Executable(dir)
 	if !ok {
 		return ErrNotFound
@@ -176,7 +193,32 @@ func Launch(dir string, args []string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	return cmd.Process.Release()
+	// Reap the child when it exits. Without this a short-lived process stays
+	// as a zombie and /proc still reports its name as if the game were open.
+	go func() {
+		_ = cmd.Wait()
+		if onExit != nil {
+			onExit()
+		}
+	}()
+	return nil
+}
+
+// procZombie reports whether a /proc/<pid>/stat line is a zombie. The comm
+// field is in parentheses and may itself contain spaces or parentheses, so
+// the state is the first non-space byte after the last ')'.
+func procZombie(stat []byte) bool {
+	i := bytes.LastIndexByte(stat, ')')
+	if i < 0 {
+		return false
+	}
+	for j := i + 1; j < len(stat); j++ {
+		if stat[j] == ' ' {
+			continue
+		}
+		return stat[j] == 'Z'
+	}
+	return false
 }
 
 // Version reads the first line of a version file when the game ships one.

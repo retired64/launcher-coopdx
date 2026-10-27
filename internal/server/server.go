@@ -26,6 +26,7 @@ import (
 	"github.com/retired64/coop-loader/internal/eeprom"
 	"github.com/retired64/coop-loader/internal/game"
 	"github.com/retired64/coop-loader/internal/mods"
+	"github.com/retired64/coop-loader/internal/session"
 )
 
 //go:embed web
@@ -77,6 +78,14 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("POST /api/settings/gamepath", s.wrap(s.setGamePath))
 	mux.HandleFunc("POST /api/settings/closeonplay", s.wrap(s.setCloseOnPlay))
+	mux.HandleFunc("POST /api/settings/netconsent", s.wrap(s.setNetConsent))
+
+	mux.HandleFunc("GET /api/session/state", s.wrap(s.sessionState))
+	mux.HandleFunc("POST /api/session/start", s.wrap(s.startSession))
+	mux.HandleFunc("POST /api/session/stop", s.wrap(s.stopSession))
+	mux.HandleFunc("POST /api/session/launch", s.wrap(s.launchSession))
+	mux.HandleFunc("GET /api/session/logs", s.wrap(s.sessionLogs))
+
 	mux.HandleFunc("POST /api/open-external", s.wrap(s.openExternal))
 	mux.HandleFunc("POST /api/game/detect", s.wrap(s.detectGame))
 	mux.HandleFunc("POST /api/game/launch", s.wrap(s.launchGame))
@@ -420,6 +429,82 @@ func (s *Server) setCloseOnPlay(w http.ResponseWriter, r *http.Request) error {
 	return s.svc.SetCloseOnPlay(in.On)
 }
 
+func (s *Server) setNetConsent(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Accepted     bool `json:"accepted"`
+		TermsVersion int  `json:"termsVersion"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if err := s.svc.SetNetConsent(in.Accepted, in.TermsVersion); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return nil
+}
+
+func (s *Server) sessionState(w http.ResponseWriter, r *http.Request) error {
+	state, ok := s.svc.SessionState()
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"session": nil})
+		return nil
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"session": state})
+	return nil
+}
+
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Mode string `json:"mode"`
+		Code string `json:"code"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	state, err := s.svc.StartSession(session.Mode(in.Mode), in.Code)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"session": state})
+	return nil
+}
+
+func (s *Server) stopSession(w http.ResponseWriter, r *http.Request) error {
+	s.svc.StopSession()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return nil
+}
+
+func (s *Server) launchSession(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Slot    int `json:"slot"`
+		Players int `json:"players"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	state, ok := s.svc.SessionState()
+	if !ok {
+		return app.ErrNoSession
+	}
+	state, err := s.svc.LaunchSession(state.Mode, in.Slot, in.Players)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"session": state})
+	return nil
+}
+
+func (s *Server) sessionLogs(w http.ResponseWriter, r *http.Request) error {
+	logs := s.svc.SessionLogs()
+	if logs == nil {
+		logs = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+	return nil
+}
+
 func (s *Server) openExternal(w http.ResponseWriter, r *http.Request) error {
 	var in struct {
 		URL string `json:"url"`
@@ -500,6 +585,10 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "no-config", err)
 	case errors.Is(err, game.ErrNotFound):
 		writeError(w, http.StatusBadRequest, "game-not-found", err)
+	case errors.Is(err, app.ErrSessionInput):
+		writeError(w, http.StatusBadRequest, "bad-session", err)
+	case errors.Is(err, app.ErrNoSession):
+		writeError(w, http.StatusConflict, "no-session", err)
 	case errors.Is(err, mods.ErrCompiled):
 		writeError(w, http.StatusConflict, "compiled", err)
 	case errors.Is(err, mods.ErrTooBig):
