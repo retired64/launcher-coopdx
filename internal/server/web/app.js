@@ -38,6 +38,10 @@
     sessionLaunchedAt: 0,
     lastRunning: false,
     lastSessionGameIn: false,
+    copy: null,
+    copyKey: "",
+    copyBusy: false,
+    copyChoice: { mods: true, look: true, saves: true },
     sessionAuto: true,
     host: { slot: 1, players: 4 },
     hostSlotLoaded: false,
@@ -1255,6 +1259,488 @@
     renderSessionPill();
   }
 
+
+  // ---------- copy between devices ----------
+
+  const COPY_CONSENT = "copyConsent";
+  const COPY_MODELS = ["Mario", "Luigi", "Toad", "Waluigi", "Wario"];
+
+  function copyConsentGiven() {
+    try { return localStorage.getItem(COPY_CONSENT) === "1"; } catch { return false; }
+  }
+
+  function ensureCopyConsent() {
+    if (copyConsentGiven()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let answered = false;
+      const dialog = el("dialog", { class: "dialog session-consent" });
+      const finish = (ok) => {
+        if (answered) return;
+        answered = true;
+        dialog.close();
+        dialog.remove();
+        if (ok) {
+          try { localStorage.setItem(COPY_CONSENT, "1"); } catch { /* ignore */ }
+        }
+        resolve(ok);
+      };
+      dialog.append(
+        el("h3", {}, "Copy between devices"),
+        el("p", {},
+          "One device shows a code and the other types it. The two find each other through the same meeting points as Play with friends, and what they exchange is locked with the code."
+        ),
+        el("ul", { class: "consent-list" },
+          el("li", {}, "Then they connect directly. When that is impossible, the copy goes through the relay on Cloudflare."),
+          el("li", {}, "Your internet address is shared with those meeting points, the relay and the address-lookup services of Google and Cloudflare. Your files only travel between your two devices, encrypted."),
+          el("li", {}, "Mods include Lua, and the other device will run it. Copy only between devices you trust.")
+        ),
+        el("div", { class: "dialog-actions" },
+          el("button", { class: "btn", type: "button", onclick: () => finish(false) }, "Not now"),
+          el("button", { class: "btn btn-accent", type: "button", onclick: () => finish(true) }, "Continue")
+        )
+      );
+      dialog.addEventListener("cancel", (ev) => { ev.preventDefault(); finish(false); });
+      document.body.append(dialog);
+      dialog.showModal();
+    });
+  }
+
+  function copyBytes(n) {
+    if (!Number.isFinite(n) || n <= 0) return "0 KB";
+    if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
+    if (n >= 1e6) return `${Math.round(n / 1e6)} MB`;
+    return `${Math.max(1, Math.round(n / 1e3))} KB`;
+  }
+
+  function copyList(list, max = 3) {
+    if (!list || !list.length) return "";
+    return list.length <= max
+      ? list.join(", ")
+      : `${list.slice(0, max).join(", ")} and ${list.length - max} more`;
+  }
+
+  async function refreshCopy(force) {
+    let data;
+    try {
+      data = await api("/api/copy/state");
+    } catch {
+      return;
+    }
+    const next = data.copy || null;
+    const key = next ? JSON.stringify(next) : "";
+    const changed = key !== state.copyKey;
+    if (next && next.phase === "review" && (!state.copy || state.copy.phase !== "review")) {
+      state.copyChoice = { mods: true, look: true, saves: true };
+    }
+    state.copy = next;
+    state.copyKey = key;
+    if (changed || force) renderCopy();
+    if (state.tab === "copy") {
+      const details = $("#copy-log-card");
+      if (details && details.open) refreshCopyLogs().catch(() => {});
+    }
+  }
+
+  async function refreshCopyLogs() {
+    const data = await api("/api/copy/logs");
+    const lines = data.logs || [];
+    $("#copy-log").textContent = lines.length
+      ? lines.slice(-400).join("\n")
+      : "No log lines yet.";
+  }
+
+  async function startCopy(role, code) {
+    if (state.copyBusy) return;
+    if (!(await ensureCopyConsent())) return;
+    state.copyBusy = true;
+    renderCopy();
+    try {
+      const data = await postJSON("/api/copy/start", { role, code: code || "" });
+      state.copy = data.copy;
+      state.copyKey = JSON.stringify(data.copy);
+      if (state.copy && state.copy.phase === "review") {
+        state.copyChoice = { mods: true, look: true, saves: true };
+      }
+      renderCopy();
+    } catch (err) {
+      toast(err.message || "Could not start the copy.", "bad");
+    } finally {
+      state.copyBusy = false;
+      renderCopy();
+    }
+  }
+
+  async function stopCopy(quiet) {
+    if (state.copyBusy) return;
+    state.copyBusy = true;
+    try {
+      await postJSON("/api/copy/stop", {});
+    } catch (err) {
+      if (!quiet) toast(err.message || "Could not stop the copy.", "bad");
+    } finally {
+      state.copy = null;
+      state.copyKey = "";
+      state.copyBusy = false;
+      renderCopy();
+    }
+    if (!quiet) toast("Copy stopped.", "ok");
+  }
+
+  async function acceptCopy() {
+    if (!state.copy || state.copyBusy) return;
+    const choice = { ...state.copyChoice };
+    if (!choice.mods && !choice.look && !choice.saves) return;
+    state.copyBusy = true;
+    renderCopy();
+    try {
+      await postJSON("/api/copy/accept", choice);
+    } catch (err) {
+      toast(err.message || "Could not start copying.", "bad");
+    } finally {
+      state.copyBusy = false;
+      renderCopy();
+    }
+  }
+
+  function copyBar(progress) {
+    if (!progress) return el("div", { class: "copy-bar", hidden: true });
+    const total = Math.max(1, Number(progress.total) || 0);
+    const done = Math.max(0, Math.min(total, Number(progress.done) || 0));
+    const pct = Math.round((done / total) * 100);
+    return el("div", { class: "copy-bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(pct) },
+      el("span", { class: "copy-bar-fill", style: `width:${pct}%` })
+    );
+  }
+
+  function copyStatus(s) {
+    if (s.phase === "failed") return s.message || "Couldn't connect.";
+    if (s.peer) {
+      if (s.route === "relay") return `Connected to ${s.peer.name}, through the relay.`;
+      return `Connected to ${s.peer.name}.`;
+    }
+    if (s.trackers > 0) return "Online. Waiting for your other device…";
+    return "Getting online…";
+  }
+
+  function copyProgressText(s) {
+    if (s.phase === "done") {
+      const name = s.peer?.name ?? "your other device";
+      return s.role === "send"
+        ? `Done. ${name} has the mods, look and saves of this computer.`
+        : `Done. Your mods, look and saves match ${name}.`;
+    }
+    if (s.phase === "copying" && s.progress) {
+      return `${s.role === "send" ? "Sending" : "Copying"} ${copyBytes(s.progress.done)} of ${copyBytes(s.progress.total)}`;
+    }
+    if (s.peer) return "It's checking what to copy.";
+    return "Nothing yet.";
+  }
+
+  function copyStep(n, title, ...kids) {
+    return el("section", { class: "step" },
+      el("div", { class: "step-head" },
+        el("span", { class: "step-num", "aria-hidden": "true" }, String(n)),
+        el("h3", { class: "step-title" }, title)
+      ),
+      ...kids
+    );
+  }
+
+  function copyActions(s) {
+    if (s.phase === "done") {
+      return [el("button", { class: "btn btn-accent", type: "button", onclick: () => guard(() => stopCopy(true)) }, "Done")];
+    }
+    if (s.phase === "failed") {
+      return [
+        el("button", { class: "btn", type: "button", onclick: () => guard(() => stopCopy(true)) }, "Close"),
+        el("button", {
+          class: "btn btn-accent",
+          type: "button",
+          onclick: () => guard(async () => {
+            const role = s.role;
+            const code = s.role === "get" ? s.code : "";
+            await stopCopy(true);
+            await startCopy(role, code);
+          }),
+        }, "Try again"),
+      ];
+    }
+    return [el("button", {
+      class: "btn",
+      type: "button",
+      disabled: state.copyBusy,
+      onclick: () => guard(() => stopCopy()),
+    }, "Stop")];
+  }
+
+  function copyIntro() {
+    const input = el("input", {
+      class: "input join-input",
+      type: "text",
+      maxlength: "12",
+      spellcheck: "false",
+      autocomplete: "off",
+      placeholder: "ABCD-1234",
+      "aria-label": "Code from your other device",
+      value: state.joinDraft || "",
+      oninput: (ev) => { state.joinDraft = ev.target.value; },
+      onkeydown: (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          const code = normalizeCode(ev.target.value);
+          if (!code) { toast("That doesn't look like a code. It has 8 letters and numbers, like K7QD-9XPA.", "bad"); return; }
+          guard(() => startCopy("get", code));
+        }
+      },
+    });
+
+    const sendCard = el("div", { class: "copy-card" },
+      el("h3", {}, "Send from this computer"),
+      el("p", {}, "Your other device gets the mods, look and saves of this computer."),
+      el("div", { class: "session-actions" },
+        el("button", {
+          class: "btn btn-accent",
+          type: "button",
+          disabled: state.copyBusy,
+          onclick: () => guard(() => startCopy("send", "")),
+        }, state.copyBusy ? "Starting…" : "Send from this computer")
+      )
+    );
+
+    const getCard = el("div", { class: "copy-card" },
+      el("h3", {}, "Get from another device"),
+      el("p", {}, "This computer gets the mods, look and saves of your other device."),
+      input,
+      el("div", { class: "session-actions" },
+        el("button", {
+          class: "btn btn-accent",
+          type: "button",
+          disabled: state.copyBusy,
+          onclick: () => {
+            const code = normalizeCode(input.value);
+            if (!code) { toast("That doesn't look like a code. It has 8 letters and numbers, like K7QD-9XPA.", "bad"); return; }
+            guard(() => startCopy("get", code));
+          },
+        }, state.copyBusy ? "Starting…" : "Connect")
+      )
+    );
+
+    return [
+      el("div", { class: "copy-grid" }, sendCard, getCard),
+      el("p", { class: "hint" },
+        "Open Coop Loader on both devices. It works between computers and phones, at home or far apart. The code is the key: treat it like a password."
+      ),
+    ];
+  }
+
+  function copySendView(s) {
+    const code = el("code", { class: "session-code", tabindex: "0" }, s.code);
+    const copy = el("button", {
+      class: "btn",
+      type: "button",
+      onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(s.code);
+          toast("Code copied.", "ok");
+        } catch {
+          toast("Could not copy the code. Select it and copy it by hand.", "bad");
+        }
+      },
+    }, "Copy code");
+
+    return [
+      el("div", { class: "session-head" },
+        el("div", {},
+          el("p", { class: "session-kicker" }, "Sending"),
+          code
+        ),
+        el("div", { class: "session-head-actions" }, copy)
+      ),
+      copyStep(1, "Type this code on your other device",
+        el("p", { class: "status-line" }, copyStatus(s)),
+        el("p", { class: "caption" }, "There: Copy between devices › Get from another device.")
+      ),
+      copyStep(2, "Your other device copies",
+        el("p", { class: "caption" }, copyProgressText(s)),
+        copyBar(s.progress)
+      ),
+      el("div", { class: "session-actions" }, ...copyActions(s)),
+      s.message ? el("p", { class: "hint" }, s.message) : null,
+      s.phase !== "done"
+        ? el("p", { class: "hint" },
+            s.trackers > 0
+              ? `${s.trackers} meeting point${s.trackers === 1 ? "" : "s"} online.`
+              : "Trying to reach the meeting points…"
+          )
+        : null,
+    ];
+  }
+
+  function copyGetView(s) {
+    return [
+      el("div", { class: "session-head" },
+        el("div", {},
+          el("p", { class: "session-kicker" }, "Receiving"),
+          el("code", { class: "session-code", tabindex: "0" }, s.code)
+        )
+      ),
+      copyStep(1, "Your other device's code",
+        el("p", { class: "status-line" }, copyStatus(s)),
+        s.phase === "failed" ? el("p", { class: "caption" }, s.message || "") : null
+      ),
+      copyStep(2, "This device copies",
+        el("p", { class: "caption" }, copyProgressText(s)),
+        copyBar(s.progress)
+      ),
+      el("div", { class: "session-actions" }, ...copyActions(s)),
+      s.message ? el("p", { class: "hint" }, s.message) : null,
+      s.phase !== "done"
+        ? el("p", { class: "hint" },
+            s.trackers > 0
+              ? `${s.trackers} meeting point${s.trackers === 1 ? "" : "s"} online.`
+              : "Trying to reach the meeting points…"
+          )
+        : null,
+    ];
+  }
+
+  function copyCheckbox(key, label, description) {
+    return el("label", { class: "copy-check" },
+      el("input", {
+        type: "checkbox",
+        checked: state.copyChoice[key] ? "checked" : null,
+        onchange: (ev) => {
+          state.copyChoice[key] = ev.target.checked;
+          renderCopy();
+        },
+      }),
+      el("span", {},
+        el("strong", {}, label),
+        description ? el("span", { class: "caption" }, description) : null
+      )
+    );
+  }
+
+  function copyReviewView(s) {
+    const r = s.review;
+    const mods = {
+      added: r.mods.added || [],
+      updated: r.mods.updated || [],
+      on: r.mods.on || 0,
+      bytes: r.mods.bytes || 0,
+      turnedOff: r.mods.turnedOff || [],
+      missing: r.mods.missing || [],
+      skipped: r.mods.skipped || [],
+      compiled: r.mods.compiled || [],
+    };
+    const look = {
+      name: r.look.name || "",
+      model: r.look.model || 0,
+      colors: r.look.colors || {},
+      presets: r.look.presets || [],
+    };
+    const saves = { slots: r.saves.slots || [], modSaves: r.saves.modSaves || 0 };
+    const changedMods = [...mods.added, ...mods.updated];
+    const modLines = [];
+    if (changedMods.length) {
+      modLines.push(`${changedMods.length} to copy: ${copyList(changedMods, 2)}.`);
+      modLines.push(`${copyBytes(mods.bytes)}. ${mods.on === 1 ? "1 will be on." : `${mods.on} will be on.`}`);
+    } else {
+      modLines.push("You already have them all.");
+      modLines.push(mods.on === 1 ? "1 will be on." : `${mods.on} will be on.`);
+    }
+    if (mods.turnedOff.length) modLines.push(`Turned off, only on this computer (not removed): ${copyList(mods.turnedOff, 2)}.`);
+    if (mods.missing.length) modLines.push(`Not in this game, left out: ${copyList(mods.missing, 2)}.`);
+    if (mods.skipped.length) {
+      modLines.push(`Too big for the relay, left out: ${copyList(mods.skipped, 2)}.`);
+      modLines.push("Put both devices on the same Wi-Fi to copy them.");
+    }
+    if (mods.compiled.length) modLines.push(`Has compiled code (can't be read before it runs): ${copyList(mods.compiled, 2)}.`);
+
+    const color = (key) => el("span", { class: "copy-color", style: `background:${look.colors[key] || "#808080"}` });
+    const lookLine = el("span", { class: "copy-look" },
+      color("cap"), color("shirt"), color("pants"),
+      el("span", {}, `${look.name || "Player"} · ${COPY_MODELS[look.model] || "Mario"}`)
+    );
+
+    const saveLines = [];
+    for (const slot of saves.slots) {
+      const here = slot.here;
+      const stars = slot.stars;
+      let text = null;
+      if (stars === null && here !== null) text = `Save file ${slot.slot + 1}: empty, replacing ${here} star${here === 1 ? "" : "s"}.`;
+      else if (stars !== null && here === null) text = `Save file ${slot.slot + 1}: ${stars} star${stars === 1 ? "" : "s"}, new here.`;
+      else if (stars !== null && here !== null) text = `Save file ${slot.slot + 1}: ${stars} star${stars === 1 ? "" : "s"}, replacing ${here} star${here === 1 ? "" : "s"}.`;
+      if (text) {
+        const lose = here !== null && (stars ?? 0) < here;
+        saveLines.push(lose ? el("strong", { class: "copy-warn" }, text) : text);
+      }
+    }
+    if (saves.modSaves) saveLines.push(saves.modSaves === 1 ? "And 1 mod save." : `And ${saves.modSaves} mod saves.`);
+    if (saves.slots.some((slot) => slot.here !== null && (slot.stars ?? 0) < slot.here)) {
+      saveLines.push("Turn Saves off to keep the stars of this computer.");
+    }
+    if (!saveLines.length) saveLines.push("No saves there yet.");
+
+    const any = state.copyChoice.mods || state.copyChoice.look || state.copyChoice.saves;
+    return [
+      el("div", { class: "session-head" },
+        el("div", {},
+          el("p", { class: "session-kicker" }, "Review"),
+          el("h3", {}, `Copy from ${r.from.name}`)
+        )
+      ),
+      el("div", { class: "copy-review" },
+        el("section", { class: "copy-part" },
+          copyCheckbox("mods", "Mods", modLines.join(" "))
+        ),
+        el("section", { class: "copy-part" },
+          copyCheckbox("look", "Look", look.presets.length ? `Presets: ${copyList(look.presets, 2)}.` : "Name, character and colours."),
+          lookLine
+        ),
+        el("section", { class: "copy-part" },
+          copyCheckbox("saves", "Saves", ""),
+          el("div", { class: "copy-save-lines" }, ...saveLines.map((line) => el("p", { class: "caption" }, line)))
+        )
+      ),
+      el("p", { class: "caption" },
+        "What the copy replaces goes to removed-by-coop-loader, not deleted."
+      ),
+      el("div", { class: "session-actions" },
+        el("button", { class: "btn", type: "button", onclick: () => guard(() => stopCopy()) }, "Cancel"),
+        el("button", {
+          class: "btn btn-accent",
+          type: "button",
+          disabled: !any || state.copyBusy,
+          onclick: () => guard(acceptCopy),
+        }, state.copyBusy ? "Starting…" : "Copy to this computer")
+      ),
+    ];
+  }
+
+  function renderCopy() {
+    const panel = $("#copy-panel");
+    const s = state.copy;
+    if (!panel) return;
+    let kids;
+    if (!s) kids = copyIntro();
+    else if (s.role === "send") kids = copySendView(s);
+    else if (s.phase === "review" && s.review) kids = copyReviewView(s);
+    else kids = copyGetView(s);
+    panel.replaceChildren(...kids.filter((kid) => kid !== null && kid !== undefined && kid !== false));
+
+    const chip = $("#copy-chip");
+    if (s) {
+      chip.hidden = false;
+      if (s.phase === "done") { chip.textContent = "Done"; chip.className = "chip ok"; }
+      else if (s.phase === "failed") { chip.textContent = "Not connected"; chip.className = "chip bad"; }
+      else if (s.peer) { chip.textContent = "Connected"; chip.className = "chip ok"; }
+      else { chip.textContent = "Waiting"; chip.className = "chip busy"; }
+    } else {
+      chip.hidden = true;
+    }
+  }
+
   // ---------- saves ----------
 
   async function loadSaves() {
@@ -1459,6 +1945,11 @@
       const details = $("#session-log-card");
       if (details && details.open) await refreshSessionLogs();
     });
+    if (name === "copy") guard(async () => {
+      await refreshCopy(true);
+      const details = $("#copy-log-card");
+      if (details && details.open) await refreshCopyLogs();
+    });
     if (name === "browse") guard(async () => {
       await loadCategories();
       if (!state.browse.loaded) await loadBrowse(true);
@@ -1512,6 +2003,9 @@
     $("#session-log-card").addEventListener("toggle", (ev) => {
       if (ev.target.open) guard(refreshSessionLogs);
     });
+    $("#copy-log-card").addEventListener("toggle", (ev) => {
+      if (ev.target.open) guard(refreshCopyLogs);
+    });
     $("#profile-create").addEventListener("click", () => guard(async () => {
       const input = $("#profile-name");
       const name = input.value.trim();
@@ -1533,12 +2027,17 @@
       await Promise.all([loadMods(), loadSaves(), loadProfiles()]);
       await refreshSession(true).catch(() => {});
       renderSession();
+      await refreshCopy(true).catch(() => {});
+      renderCopy();
     } catch (err) {
       toast(err.message || "Could not talk to the loader.", "bad");
     }
     setInterval(() => refreshStatus().catch(() => {}), 5000);
     setInterval(() => {
       if (state.tab === "play" || state.session) refreshSession().catch(() => {});
+    }, 1000);
+    setInterval(() => {
+      if (state.tab === "copy" || state.copy) refreshCopy().catch(() => {});
     }, 1000);
   }
 

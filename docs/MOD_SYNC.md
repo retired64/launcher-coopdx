@@ -296,13 +296,13 @@ Por eso:
 
 - únete solo a personas que conozcas;
 - no publiques códigos de sala;
-- si algún día el loader implementa su propia copia (fase 4), debe validar rutas
-  (sin `..`, sin absolutas, sin symlinks), usar una carpeta de staging y mover
-  con rename atómico; no debe copiar la concatenación ingenua del juego.
+- la copia propia del loader (`copy/v1`) sí valida rutas (sin `..`, sin
+  absolutas, sin symlinks), usa staging y mueve con rename atómico; no copia la
+  concatenación ingenua del juego. Ver [COPY.md](COPY.md).
 
-## 9. Qué significa para la fase 4
+## 9. Qué significa para la copia entre dispositivos
 
-La fase 4 (`copy/v1`) sigue teniendo sentido, pero **no para poder unirse**. El
+La fase 4 (`copy/v1`) ya está implementada, pero **no para poder unirse**. El
 juego ya resuelve eso. Sirve para:
 
 1. **Preinstalar** mods en el otro dispositivo antes de jugar, incluidos los que
@@ -313,10 +313,11 @@ juego ya resuelve eso. Sirve para:
 5. Conservar la **procedencia** del sitio (`record`), que la sincronización del
    juego no transporta.
 
-La copia del loader no debe intentar hablar el protocolo `PACKET_MOD_LIST` del
-juego: es otro canal, con otra sal (`coop-mod-loader/copy/v1`), DataChannel
-`copy` ordenado y fiable, manifiesto JSON y SHA-256 por archivo. El contrato
-está en [PROTOCOL.md](PROTOCOL.md#8-copia-entre-dispositivos).
+La copia del loader no habla el protocolo `PACKET_MOD_LIST` del juego: es otro
+canal, con otra sal (`coop-mod-loader/copy/v1`), DataChannel `copy` ordenado y
+fiable, manifiesto JSON y SHA-256 por archivo. El contrato está en
+[COPY.md](COPY.md) y en
+[PROTOCOL.md](PROTOCOL.md#8-copia-entre-dispositivos).
 
 Lo que sí conviene reutilizar del juego es su **modelo mental**: solo lo que el
 otro lado necesita, archivos crudos, caché por hash, y no tocar el config del

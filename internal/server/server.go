@@ -23,6 +23,7 @@ import (
 
 	"github.com/retired64/coop-loader/internal/app"
 	"github.com/retired64/coop-loader/internal/catalog"
+	"github.com/retired64/coop-loader/internal/devicecopy"
 	"github.com/retired64/coop-loader/internal/eeprom"
 	"github.com/retired64/coop-loader/internal/game"
 	"github.com/retired64/coop-loader/internal/mods"
@@ -85,6 +86,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/session/stop", s.wrap(s.stopSession))
 	mux.HandleFunc("POST /api/session/launch", s.wrap(s.launchSession))
 	mux.HandleFunc("GET /api/session/logs", s.wrap(s.sessionLogs))
+
+	mux.HandleFunc("GET /api/copy/state", s.wrap(s.copyState))
+	mux.HandleFunc("POST /api/copy/start", s.wrap(s.startCopy))
+	mux.HandleFunc("POST /api/copy/accept", s.wrap(s.acceptCopy))
+	mux.HandleFunc("POST /api/copy/stop", s.wrap(s.stopCopy))
+	mux.HandleFunc("GET /api/copy/logs", s.wrap(s.copyLogs))
 
 	mux.HandleFunc("POST /api/open-external", s.wrap(s.openExternal))
 	mux.HandleFunc("POST /api/game/detect", s.wrap(s.detectGame))
@@ -505,6 +512,63 @@ func (s *Server) sessionLogs(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+func (s *Server) copyState(w http.ResponseWriter, r *http.Request) error {
+	state, ok := s.svc.CopyState()
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"copy": nil})
+		return nil
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"copy": state})
+	return nil
+}
+
+func (s *Server) startCopy(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Role string `json:"role"`
+		Code string `json:"code"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	state, err := s.svc.StartCopy(devicecopy.Role(in.Role), in.Code)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"copy": state})
+	return nil
+}
+
+func (s *Server) acceptCopy(w http.ResponseWriter, r *http.Request) error {
+	var in struct {
+		Mods  bool `json:"mods"`
+		Look  bool `json:"look"`
+		Saves bool `json:"saves"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return badRequest(err)
+	}
+	if err := s.svc.CopyAccept(devicecopy.Choice{Mods: in.Mods, Look: in.Look, Saves: in.Saves}); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return nil
+}
+
+func (s *Server) stopCopy(w http.ResponseWriter, r *http.Request) error {
+	s.svc.StopCopy()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return nil
+}
+
+func (s *Server) copyLogs(w http.ResponseWriter, r *http.Request) error {
+	logs := s.svc.CopyLogs()
+	if logs == nil {
+		logs = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+	return nil
+}
+
 func (s *Server) openExternal(w http.ResponseWriter, r *http.Request) error {
 	var in struct {
 		URL string `json:"url"`
@@ -589,6 +653,16 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "bad-session", err)
 	case errors.Is(err, app.ErrNoSession):
 		writeError(w, http.StatusConflict, "no-session", err)
+	case errors.Is(err, app.ErrCopyInput):
+		writeError(w, http.StatusBadRequest, "bad-copy", err)
+	case errors.Is(err, app.ErrNoCopy):
+		writeError(w, http.StatusConflict, "no-copy", err)
+	case errors.Is(err, app.ErrCopyActive):
+		writeError(w, http.StatusConflict, "copy-active", err)
+	case errors.Is(err, app.ErrSessionBusy):
+		writeError(w, http.StatusConflict, "session-active", err)
+	case errors.Is(err, devicecopy.ErrNoReview):
+		writeError(w, http.StatusConflict, "no-review", err)
 	case errors.Is(err, mods.ErrCompiled):
 		writeError(w, http.StatusConflict, "compiled", err)
 	case errors.Is(err, mods.ErrTooBig):

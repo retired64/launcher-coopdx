@@ -739,3 +739,96 @@ h1 {
   .session-head { flex-direction: column; align-items: flex-start; }
   .session-code { letter-spacing: 3px; }
 }
+
+/* ---------- copy between devices ---------- */
+
+.copy-panel { display: flex; flex-direction: column; gap: 12px; }
+
+.copy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.copy-card {
+  padding: 16px;
+  background: var(--panel);
+  border: var(--px) solid var(--line);
+  box-shadow: 4px 4px 0 var(--shadow);
+}
+
+.copy-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.copy-card p { margin: 0 0 12px; color: var(--muted); }
+.copy-card .join-input { max-width: 100%; margin-bottom: 4px; }
+
+.copy-review { display: flex; flex-direction: column; gap: 10px; }
+
+.copy-part {
+  padding: 12px 14px;
+  background: var(--panel);
+  border: var(--px) solid var(--line);
+  border-left: 6px solid var(--line-hi);
+}
+
+.copy-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.copy-check input {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.copy-check > span { display: flex; flex-direction: column; gap: 3px; }
+.copy-check strong { letter-spacing: 1px; text-transform: uppercase; font-size: 13px; }
+.copy-check .caption { margin: 0; color: var(--muted); }
+
+.copy-look {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: #0002;
+  border: 1px solid var(--line);
+}
+
+.copy-color {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #0008;
+}
+
+.copy-save-lines { margin-top: 8px; }
+.copy-save-lines p { margin: 3px 0; }
+.copy-warn { color: var(--warn); }
+
+.copy-bar {
+  position: relative;
+  height: 14px;
+  margin-top: 10px;
+  background: #0c0a12;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.copy-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #ffd23f, #ffb45e);
+  transition: width 0.2s ease-out;
+}

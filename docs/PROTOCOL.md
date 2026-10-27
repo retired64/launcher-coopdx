@@ -154,11 +154,16 @@ enlace se reenvían (32 KiB cada 50 ms).
 Misma señalización, sal `coop-mod-loader/copy/v1` (los `infoHash` de copia y de
 juego nunca colisionan). DataChannel **`copy` ordenado y fiable**.
 
+**Roles invertidos respecto a la partida:** el receptor (`get`) crea la oferta
+WebRTC y publica 6 ofertas; el emisor (`send`) responde. El receptor espera al
+otro dispositivo 90 s. Todo el canal va dentro de DTLS-SRTP; el SDP va cifrado
+con AES-256-GCM igual que en la partida.
+
 Mensajes de control (JSON):
 
 | `t` | Campos | Quién |
 |---|---|---|
-| `hello` | `v`, `device{name,kind}` | ambos |
+| `hello` | `v` (1), `device{name,kind}` | ambos |
 | `manifest` | `i`, `n`, `text` | emisor → receptor |
 | `want` | `files: [índices]` | receptor → emisor |
 | `ack` | `bytes` | receptor → emisor |
@@ -171,8 +176,14 @@ Mensajes de control (JSON):
 - Ventana: máximo 8 MiB en vuelo; ACK cada 1 MiB; esperar si
   `bufferedAmount > 4 MiB`.
 - Verificación: SHA-256 por archivo; si uno no coincide se aborta **todo**.
-- Límites: 2 000 mods, 16 GiB total, 90 s para encontrar al otro dispositivo.
+- Límites: 2 000 mods, 20 000 archivos, 1 GiB por archivo, 16 GiB total,
+  300 presets, 2 000 `.sav`, 1 MiB por `.sav`, 90 s para encontrar al otro
+  dispositivo.
 - Por relé se omiten los mods que no caben en 500 MB.
+- El receptor valida rutas (≤16 componentes, sin `..`, sin nombres reservados),
+  SHA-256 y que el `.lua` no cambie a bytecode sin declararlo.
+- Al aplicar, `sm64config.txt` se escribe una vez con copia y escritura atómica;
+  lo reemplazado va a `removed-by-coop-loader/copy-<fecha>/`.
 
 Manifiesto (campos observados):
 
@@ -188,8 +199,8 @@ Manifiesto (campos observados):
   "mods": [
     {
       "id": "…", "type": "mod|pack", "location": "user",
-      "isFolder": true,
-      "files": [ { "rel": "main.lua", "size": 123, "sha256": "…" } ],
+      "name": "…", "enabled": true, "isFolder": true,
+      "files": [ { "rel": "main.lua", "size": 123, "sha256": "…", "code": false } ],
       "record": { "siteId": 1, "siteUrl": "…", "title": "…", "version": "…", "installedAt": "…" }
     }
   ]
@@ -197,6 +208,9 @@ Manifiesto (campos observados):
 ```
 
 `record` es opcional (procedencia en el sitio de mods).
+
+La implementación, los límites exactos, la revisión y las reglas de aplicación
+están en [COPY.md](COPY.md).
 
 ## 9. Formato de partida
 

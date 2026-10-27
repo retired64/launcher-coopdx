@@ -59,6 +59,7 @@ func (s *Service) cat() (*catalog.Client, error) {
 func (s *Service) Close() error {
 	// Give the room a chance to send its leave and close its sockets.
 	s.StopSession()
+	s.StopCopy()
 
 	s.catalogMu.Lock()
 	defer s.catalogMu.Unlock()

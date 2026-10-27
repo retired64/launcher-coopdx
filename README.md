@@ -3,12 +3,12 @@
 Un gestor de mods, partidas y perfiles para **SM64 Coop Deluxe**, escrito en Go.
 Un solo binario, sin cgo, con una interfaz web local.
 
-> **Estado:** fases 0–3. Mods, catálogo, dependencias, perfiles, partidas,
-> ajustes y **juego online por código** (WebRTC + puente UDP) funcionan. La
-> copia entre dispositivos (para preinstalar, no para unirse) es la siguiente
-> fase.
+> **Estado:** fases 0–4. Mods, catálogo, dependencias, perfiles, partidas,
+> ajustes, **juego online por código** (WebRTC + puente UDP) y **copia entre
+> dispositivos** (mods, aspecto y partidas) funcionan. El tema visual desde la
+> ROM es la siguiente fase.
 
-[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md) · [Sincronización de mods](docs/MOD_SYNC.md)
+[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md) · [Sincronización de mods](docs/MOD_SYNC.md) · [Copia](docs/COPY.md)
 
 ---
 
@@ -34,7 +34,7 @@ Un solo binario, sin cgo, con una interfaz web local.
 | Reconexión con retención del lugar (`STILL_HERE`) | ✅ |
 | Consentimiento, ruta directa/relé y registro de conexión | ✅ |
 | Sincronización de mods del anfitrión al unirse (la hace el juego) | ✅ |
-| Copia de mods/aspecto/partidas entre dispositivos | ⏳ fase 4 |
+| Copia de mods/aspecto/partidas por código (`copy/v1`) | ✅ |
 | Tema visual desde la ROM + visor 3D | ⏳ fase 5 |
 
 ## Vista
@@ -54,6 +54,10 @@ Un solo binario, sin cgo, con una interfaz web local.
 | Unido a un amigo | |
 |---|---|
 | ![Unirse](docs/preview-play-join.png) | |
+
+| Copy: enviar | Copy: revisar antes de aceptar |
+|---|---|
+| ![Enviar](docs/preview-copy-send.png) | ![Revisar](docs/preview-copy-review.png) |
 
 ## Empezar
 
@@ -170,6 +174,38 @@ El protocolo exacto, los temporizadores y la máquina de estados están en
 [docs/SESSION.md](docs/SESSION.md). El contrato de red, en
 [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
+## Copiar entre dispositivos (fase 4)
+
+La pestaña **Copy** mueve los mods, el aspecto del jugador (nombre, personaje y
+colores) y las partidas entre dos computadores o teléfonos. No hace falta estar
+en la misma red: usa los mismos puntos de encuentro que **Play**.
+
+1. En un dispositivo: **Copy → Send from this computer**. Aparece un código.
+2. En el otro: **Copy → Get from another device**, escribe el código.
+3. El receptor revisa qué va a copiar. Puede desmarcar **Mods**, **Look** o
+   **Saves**.
+4. **Copy to this computer**. Se ve el progreso y, al terminar, **Done**.
+
+Qué hay que saber:
+
+- **Es distinto de unirse a una partida.** Al jugar, el juego ya sincroniza los
+  mods activos del anfitrión (ver [MOD_SYNC.md](docs/MOD_SYNC.md)). **Copy** sirve
+  para preinstalar mods, mover el aspecto y llevar las partidas a otro
+  dispositivo, incluso sin abrir el juego.
+- **Lo reemplazado no se borra.** Mods, paletas, partidas y `.sav` van a
+  `removed-by-coop-loader/copy-<fecha>/`; `sm64config.txt` guarda su propia
+  copia (`sm64config.modloader-backup.txt`).
+- **SHA-256 por archivo.** Si un archivo llega dañado, no se aplica nada.
+- **El código es la contraseña.** Son 40 bits; no lo publiques ni lo reutilices.
+- **Solo entre dispositivos de confianza.** Los mods incluyen Lua y el otro
+  dispositivo lo ejecutará.
+- **El juego debe estar cerrado.** Al cerrarse reescribe su configuración y
+  desharía la copia. Tampoco se puede copiar mientras juegas con un amigo, ni
+  jugar mientras copias.
+
+El protocolo exacto (roles, manifiesto, frames, ventana, ACKs y reglas de
+aplicación) está en [docs/COPY.md](docs/COPY.md).
+
 ## Catálogo y dependencias
 
 La pestaña **Browse** lee el sitio `mods.sm64coopdx.com`. Como el sitio no tiene
@@ -262,6 +298,7 @@ internal/catalog     sitio de mods: HTML, caché, descargas, GitHub
 internal/deps        escaneo de globales Lua y emparejamiento de nombres
 internal/installed   procedencia y versión de los mods instalados
 internal/session     código de sala, señalización, WebRTC y puente UDP
+internal/devicecopy  copy/v1: manifiesto, frames, SHA-256 y staging
 internal/conf        sm64config.txt y perfiles
 internal/eeprom      partida de 512 bytes
 internal/mods        descubrimiento, metadatos, instalación, borrado
@@ -286,8 +323,10 @@ config preservando CRLF, `enable-mod`/`dynos-pack`, checksum y endianness de la
 partida, rutas de instalación y `zip-slip`, bytecode, parseo del sitio con
 fixtures HTML, caché en disco, descargas (adjunto/elección/externo), GitHub,
 escaneo de globales Lua, la resolución de dependencias, el vector PBKDF2, el
-cifrado de SDP, el puente UDP (host/join, `STILL_HERE`, caché y reenvío), y una
-partida completa host↔join contra un relay WebSocket local.
+cifrado de SDP, el puente UDP (host/join, `STILL_HERE`, caché y reenvío), una
+partida completa host↔join contra un relay WebSocket local, y la copia
+`copy/v1` (manifiesto, rutas seguras, SHA-256, archivos vacíos y grandes,
+staging, configuración, paletas, partida y `.sav`).
 
 ## Roadmap
 
@@ -296,13 +335,14 @@ partida completa host↔join contra un relay WebSocket local.
 | 0–1 | núcleo local: mods, config, perfiles, partidas, UI | ✅ |
 | 2 | catálogo del sitio + descargas + dependencias Lua | ✅ |
 | 3 | sesión por código: PBKDF2/AES-GCM, trackers, `pion/webrtc`, puente UDP 7777, reconexión | ✅ |
-| 4 | copia de mods/aspecto/partidas entre PC y Android (para preinstalar; unirse ya no lo necesita) |
+| 4 | copia de mods/aspecto/partidas entre PC y Android (`copy/v1`) | ✅ |
 | 5 | tema visual y fuentes desde la ROM del usuario |
 | 6 | visor 3D del personaje leyendo el ejecutable del juego |
 | 7 | creador de mods, test headless, empaquetado, updater firmado |
 
-La fase 3 está explicada a fondo en [docs/SESSION.md](docs/SESSION.md) y su
-contrato de red en [docs/PROTOCOL.md](docs/PROTOCOL.md).
+La fase 3 está explicada a fondo en [docs/SESSION.md](docs/SESSION.md) y la fase
+4 en [docs/COPY.md](docs/COPY.md); el contrato de red de ambas, en
+[docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Sobre este proyecto
 
@@ -325,7 +365,7 @@ bajo otra cuenta.
 ## English summary
 
 A clean-room **Go** mod manager for SM64 Coop Deluxe: local single binary with an
-embedded web UI. Phases 0–3 cover game detection, mod discovery and installation
+embedded web UI. Phases 0–4 cover game detection, mod discovery and installation
 (zip/lua), `sm64config.txt` editing with backups, profiles, the 512-byte save
 file, the community mod catalog (browse/search/install/update), Lua global
 dependency resolution, and **online play by code** with a WebRTC DataChannel
@@ -335,9 +375,10 @@ host's mods preinstalled: the game itself transfers the host's active mod set
 and the joining client caches the missing files under `.tmp/<session>/` before
 entering.
 
-The device-to-device copy (preinstalling mods, player look and saves) is the next
-phase; it is a convenience for migrating devices, not a requirement for joining.
-The session engine is documented in
-[docs/SESSION.md](docs/SESSION.md); the wire contract is in
+Device-to-device copy (`copy/v1`) moves mods, player look and saves over a
+separate encrypted DataChannel; it is a convenience for migrating devices, not a
+requirement for joining. The session engine is documented in
+[docs/SESSION.md](docs/SESSION.md), the copy channel in
+[docs/COPY.md](docs/COPY.md), and the wire contract in
 [docs/PROTOCOL.md](docs/PROTOCOL.md). Not affiliated with Nintendo or the sm64coopdx
 team; no game assets are bundled.

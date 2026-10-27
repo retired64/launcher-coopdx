@@ -40,8 +40,15 @@ func (s *Service) StartSession(mode session.Mode, code string) (session.State, e
 		return session.State{}, fmt.Errorf("%w: %v", ErrSessionInput, err)
 	}
 
-	s.sessStartMu.Lock()
-	defer s.sessStartMu.Unlock()
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+
+	s.copyMu.Lock()
+	copying := s.copyEng != nil
+	s.copyMu.Unlock()
+	if copying {
+		return session.State{}, ErrCopyActive
+	}
 
 	s.sessMu.Lock()
 	old := s.sess
@@ -77,8 +84,8 @@ func (s *Service) StartSession(mode session.Mode, code string) (session.State, e
 
 // StopSession ends the room, leaving the game itself running.
 func (s *Service) StopSession() {
-	s.sessStartMu.Lock()
-	defer s.sessStartMu.Unlock()
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
 
 	s.sessMu.Lock()
 	eng := s.sess

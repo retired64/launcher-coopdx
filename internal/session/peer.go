@@ -43,6 +43,10 @@ type link struct {
 	answeredSealed string
 }
 
+// DefaultSTUNServers is the pair the reference client always starts with.
+// It is exported so the copy engine uses exactly the same lookup services.
+func DefaultSTUNServers() []string { return append([]string(nil), defaultSTUN()...) }
+
 // defaultSTUN is the pair the reference client always starts with.
 func defaultSTUN() []string {
 	return []string{
@@ -124,6 +128,12 @@ type iceJSON struct {
 		Username   string          `json:"username"`
 		Credential string          `json:"credential"`
 	} `json:"iceServers"`
+}
+
+// FetchICEServers asks the relay for short-lived TURN credentials. The copy
+// engine uses the same endpoint and timeout as the game session.
+func FetchICEServers(ctx context.Context, relay string) ([]webrtcICEServer, error) {
+	return fetchICEServers(ctx, relay)
 }
 
 func fetchICEServers(ctx context.Context, relay string) ([]webrtcICEServer, error) {
@@ -795,22 +805,23 @@ func sdpAttribute(sdp, name string) string {
 
 // --- gathering -------------------------------------------------------------
 
-type gatherWait struct {
+// GatherWait lets the caller wait until ICE collection is good enough.
+type GatherWait struct {
 	done chan struct{}
 	once sync.Once
 }
 
-func (g *gatherWait) finish() {
+func (g *GatherWait) finish() {
 	g.once.Do(func() { close(g.done) })
 }
 
-func (g *gatherWait) Wait() { <-g.done }
+func (g *GatherWait) Wait() { <-g.done }
 
 // startGather begins watching candidate collection. It stops early on a relay
 // candidate when a relay is configured, or 300 ms after the first server
 // reflexive candidate otherwise, and always at the timeout.
-func startGather(pc *webrtc.PeerConnection, timeout time.Duration, expectRelay bool) *gatherWait {
-	g := &gatherWait{done: make(chan struct{})}
+func startGather(pc *webrtc.PeerConnection, timeout time.Duration, expectRelay bool) *GatherWait {
+	g := &GatherWait{done: make(chan struct{})}
 	var srflxOnce sync.Once
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
@@ -836,6 +847,19 @@ func startGather(pc *webrtc.PeerConnection, timeout time.Duration, expectRelay b
 	time.AfterFunc(timeout, g.finish)
 	return g
 }
+
+// StartGather is the exported form of the collector used by the game engine.
+func StartGather(pc *webrtc.PeerConnection, timeout time.Duration, expectRelay bool) *GatherWait {
+	return startGather(pc, timeout, expectRelay)
+}
+
+// RouteStats is the exported form of the selected-pair classifier.
+func RouteStats(pc *webrtc.PeerConnection) (route, detail string) {
+	return routeStats(pc)
+}
+
+// SDPAttribute returns one a=<name>:value line from an SDP.
+func SDPAttribute(sdp, name string) string { return sdpAttribute(sdp, name) }
 
 // --- route statistics ------------------------------------------------------
 

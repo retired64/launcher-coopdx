@@ -168,7 +168,11 @@ func (d *Doc) Value(key string) string {
 	prefix := key + " "
 	for _, line := range d.lines {
 		if strings.HasPrefix(line, prefix) {
-			return strings.TrimSpace(line[len(prefix):])
+			value := strings.TrimSpace(line[len(prefix):])
+			if strings.HasPrefix(value, "=") {
+				value = strings.TrimSpace(value[1:])
+			}
+			return value
 		}
 	}
 	return ""

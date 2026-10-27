@@ -26,6 +26,7 @@
     <div class="shell">
       <nav class="rail" aria-label="Sections">
         <button class="rail-link" data-tab="play">Play</button>
+        <button class="rail-link" data-tab="copy">Copy</button>
         <button class="rail-link" data-tab="mods" aria-current="page">Mods</button>
         <button class="rail-link" data-tab="browse">Browse</button>
         <button class="rail-link" data-tab="saves">Saves</button>
@@ -56,6 +57,26 @@
               written here.
             </p>
             <pre id="session-log" class="session-log">Open a session to see the log.</pre>
+          </details>
+        </section>
+
+        <section class="tab" id="tab-copy" hidden>
+          <div class="toolbar">
+            <h2>Copy between devices</h2>
+            <span id="copy-chip" class="chip" hidden></span>
+          </div>
+          <p class="hint">
+            Your mods, your look (name, character, colours) and your saves.
+            Open the loader on both devices; one shows a code and the other types it.
+          </p>
+          <div id="copy-panel" class="copy-panel"></div>
+          <details class="card session-log-card" id="copy-log-card">
+            <summary>Copy log</summary>
+            <p class="hint">
+              Short device names, connection route and file counts. The code and
+              file contents are never written here.
+            </p>
+            <pre id="copy-log" class="session-log">Open a copy to see the log.</pre>
           </details>
         </section>
 

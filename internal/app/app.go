@@ -20,6 +20,7 @@ import (
 
 	"github.com/retired64/coop-loader/internal/catalog"
 	"github.com/retired64/coop-loader/internal/conf"
+	"github.com/retired64/coop-loader/internal/devicecopy"
 	"github.com/retired64/coop-loader/internal/eeprom"
 	"github.com/retired64/coop-loader/internal/fsutil"
 	"github.com/retired64/coop-loader/internal/game"
@@ -60,9 +61,16 @@ type Service struct {
 
 	records *installed.Store
 
-	sessMu      sync.Mutex
-	sessStartMu sync.Mutex
-	sess        *session.Engine
+	// startMu serialises starting and stopping a game room and a copy, so
+	// both cannot become active at the same time.
+	startMu sync.Mutex
+
+	sessMu sync.Mutex
+	sess   *session.Engine
+
+	copyMu      sync.Mutex
+	copyApplyMu sync.Mutex
+	copyEng     *devicecopy.Engine
 
 	configBackup sync.Once
 }

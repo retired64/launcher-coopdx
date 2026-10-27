@@ -236,3 +236,79 @@ func TestNetConsentAPI(t *testing.T) {
 		t.Fatalf("consent = %+v", st.NetConsent)
 	}
 }
+
+func TestCopyAPI(t *testing.T) {
+	// Keep the test offline: no public trackers, and a relay that refuses.
+	t.Setenv("COOP_NO_TRACKERS", "1")
+	t.Setenv("COOP_RELAY_URL", "http://127.0.0.1:1")
+
+	srv, _ := newTestServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp := do(t, http.MethodGet, ts.URL+"/api/copy/state", srv.Token(), "")
+	var idle struct {
+		Copy *appCopyState `json:"copy"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&idle); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if idle.Copy != nil {
+		t.Fatalf("idle copy = %+v", idle.Copy)
+	}
+
+	resp = doJSON(t, ts.URL+"/api/copy/start", srv.Token(), `{"role":"get","code":"NOPE"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad code status = %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	resp = doJSON(t, ts.URL+"/api/copy/accept", srv.Token(), `{"mods":true,"look":true,"saves":true}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("accept without review status = %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	resp = doJSON(t, ts.URL+"/api/copy/start", srv.Token(), `{"role":"send","code":""}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start send status = %d", resp.StatusCode)
+	}
+	var started struct {
+		Copy appCopyState `json:"copy"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&started); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if started.Copy.Role != "send" || started.Copy.Code == "" {
+		t.Fatalf("copy = %+v", started.Copy)
+	}
+
+	resp = doJSON(t, ts.URL+"/api/copy/stop", srv.Token(), `{}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stop status = %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	resp = do(t, http.MethodGet, ts.URL+"/api/copy/state", srv.Token(), "")
+	var after struct {
+		Copy *appCopyState `json:"copy"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&after); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if after.Copy != nil {
+		t.Fatalf("copy after stop = %+v", after.Copy)
+	}
+}
+
+// appCopyState is the subset the test decodes. It avoids importing the whole
+// devicecopy state in every assertion.
+type appCopyState struct {
+	Role     string `json:"role"`
+	Code     string `json:"code"`
+	Phase    string `json:"phase"`
+	Trackers int    `json:"trackers"`
+}

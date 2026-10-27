@@ -20,6 +20,7 @@ cmd/coop-loader        flags, salida por consola, servidor
                    ├── internal/deps        globales Lua: quién provee / qué falta
                    ├── internal/installed   procedencia de lo instalado
                    ├── internal/session     sala, WebRTC y puente UDP
+                   ├── internal/devicecopy  copy/v1: manifiesto y archivos
                    ├── internal/conf        sm64config.txt + perfiles
                    ├── internal/mods        listar, instalar, quitar
                    └── internal/eeprom      partida 512 B
@@ -161,6 +162,8 @@ Es heurístico, y así se documenta en la UI: es una ayuda, no una garantía.
 - Valida `Host` (`127.0.0.1`, `localhost`, `::1`) contra DNS rebinding.
 - CSP estricta: la página solo carga sus propios archivos; no hay CDNs.
 - La UI no guarda estado: cada acción llama a la API y vuelve a leer.
+- **Play y Copy no hacen WebRTC en el navegador.** La pestaña solo pinta
+  `/api/session/*` y `/api/copy/*`; los sockets y el cifrado viven en Go.
 
 ## Sesión P2P
 
@@ -217,6 +220,43 @@ Los detalles byte a byte, los temporizadores y la comparación con el cliente de
 referencia están en [SESSION.md](SESSION.md); el contrato de red, en
 [PROTOCOL.md](PROTOCOL.md).
 
+## Copia entre dispositivos
+
+`internal/devicecopy` es un motor aparte, aunque reutiliza la señalización y la
+criptografía de `internal/session`:
+
+```
+types.go     roles, fases, review y límites
+wire.go      frames de 12 bytes, troceado y nombres seguros
+manifest.go  manifiesto JSON, validación y estrellas de la partida
+plan.go      comparación por SHA-256, selección y presupuesto del relé
+engine.go    oferta/respuesta, DataChannel "copy", ventana y ACK
+```
+
+Diferencias con la partida:
+
+- El **receptor** (`get`) crea la oferta; el **emisor** (`send`) responde.
+- El DataChannel se llama `copy` y es **ordenado y fiable**.
+- Hay un `hello` con `v:1` y el nombre/tipo de dispositivo.
+- El emisor manda un manifiesto JSON troceado; el receptor elige qué copiar.
+- Los archivos viajan en frames de 64 KiB con SHA-256 por archivo.
+
+La copia **no** participa en la partida. El juego sincroniza sus mods por su
+cuenta (ver [MOD_SYNC.md](MOD_SYNC.md)); `copy/v1` sirve para preinstalar mods y
+mover aspecto y partidas.
+
+`app.Service` expone `StartCopy`, `StopCopy`, `CopyState`, `CopyAccept` y
+`CopyLogs`; el servidor los traduce a `/api/copy/state|start|accept|stop|logs`.
+Al aplicar, el servicio respeta las mismas garantías que el resto:
+
+- se niega mientras el juego está abierto;
+- escribe `sm64config.txt` una sola vez, con copia y escritura atómica;
+- mueve lo reemplazado a `removed-by-coop-loader/copy-<fecha>/`;
+- valida rutas (sin `..`, sin absolutas, sin enlaces simbólicos);
+- verifica SHA-256 antes de aplicar y aborta todo si un archivo falla.
+
+El protocolo completo está en [COPY.md](COPY.md).
+
 ## Decisiones y porqués
 
 | Decisión | Motivo |
@@ -234,3 +274,5 @@ referencia están en [SESSION.md](SESSION.md); el contrato de red, en
 | Mismos temporizadores y bytes que el cliente observado | interoperar con la app existente, no inventar una variante |
 | Código de 40 bits con aviso explícito | es lo que usa la versión 2; la v3 propia subirá a 128 bits + PAKE |
 | STILL_HERE y caché de 2 MiB | un corte corto no debe expulsar al jugador |
+| Copia con staging y SHA-256 | un archivo dañado no debe dejar media copia aplicada |
+| Lo reemplazado va a `removed-by-coop-loader` | nunca se borran datos del usuario |

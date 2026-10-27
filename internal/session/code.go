@@ -110,6 +110,13 @@ func Derive(code string) (*Room, error) {
 // DeriveWith is Derive with an explicit PBKDF2 iteration count. Production
 // code must use Derive; tests use a small count to stay fast.
 func DeriveWith(code string, iterations int) (*Room, error) {
+	return DeriveWithSalt(code, RoomSalt, iterations)
+}
+
+// DeriveWithSalt is the generic derivation used by the room and copy
+// protocols. They differ only in the salt; the code, work factor and key
+// layout are identical, so a copy room can never collide with a game room.
+func DeriveWithSalt(code, salt string, iterations int) (*Room, error) {
 	display, err := Normalize(code)
 	if err != nil {
 		return nil, err
@@ -117,7 +124,7 @@ func DeriveWith(code string, iterations int) (*Room, error) {
 	if iterations <= 0 {
 		iterations = DefaultIterations
 	}
-	dk, err := pbkdf2.Key(sha256.New, Raw(display), []byte(RoomSalt), iterations, 52)
+	dk, err := pbkdf2.Key(sha256.New, Raw(display), []byte(salt), iterations, 52)
 	if err != nil {
 		return nil, err
 	}

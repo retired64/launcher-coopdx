@@ -408,7 +408,7 @@ Mejoras recomendadas para una versión 3 propia (documentadas en
 | Detección de 7777 ocupado | sondeo cada 2 s en Android | no aplica en escritorio |
 | Servicio en primer plano | Android | no aplica en escritorio |
 | Sincronización de mods | la hace el juego (`.tmp` + `mod.cache`) | igual; el puente es transparente |
-| Copia entre dispositivos | `copy/v1` | fase 4 (para preinstalar; no hace falta para unirse) |
+| Copia entre dispositivos | `copy/v1` | ✅ (ver [COPY.md](COPY.md)) |
 
 ## 13. Cómo probarlo
 

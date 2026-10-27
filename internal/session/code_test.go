@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"strings"
@@ -85,9 +86,12 @@ func TestSealOpen(t *testing.T) {
 		t.Fatalf("Open = %q, %v", got, ok)
 	}
 
-	raw := []byte(sealed)
-	raw[len(raw)-2] ^= 1
-	if _, ok := room.Open(string(raw)); ok {
+	raw, err := base64.StdEncoding.DecodeString(sealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[len(raw)-1] ^= 1
+	if _, ok := room.Open(base64.StdEncoding.EncodeToString(raw)); ok {
 		t.Fatal("tampered ciphertext must not open")
 	}
 	if _, ok := room.Open("not base64!"); ok {
