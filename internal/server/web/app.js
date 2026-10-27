@@ -268,10 +268,37 @@
     return null;
   }
 
-  function browseStatus(siteId, version) {
-    const rec = recordFor(siteId);
-    if (!rec) return "none";
-    return sameVer(rec.version, version) ? "installed" : "update";
+  // Mods installed by hand have no site record. Match them by name so Browse
+  // can say "you already have this" instead of offering a blind download.
+  function nameKey(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/\\#[0-9a-f]{6}(?:[0-9a-f]{2})?\\/g, " ")
+      .replace(/\bv?\d+(?:\.\d+)+\b/g, " ")
+      .replace(/[^a-z0-9]+/g, "");
+  }
+
+  function manualMatch(item) {
+    const key = nameKey(item.title);
+    if (!key) return null;
+    for (const m of state.mods) {
+      if (m.origin !== "user") continue;
+      for (const candidate of [nameKey(m.name), nameKey(m.id)]) {
+        if (!candidate) continue;
+        if (candidate === key) return m;
+        if (candidate.length >= 8 && key.length >= 8 &&
+            (candidate.startsWith(key) || key.startsWith(candidate))) {
+          return m;
+        }
+      }
+    }
+    return null;
+  }
+
+  function browseStatus(item) {
+    const rec = recordFor(item.id);
+    if (rec) return sameVer(rec.version, item.version) ? "installed" : "update";
+    return manualMatch(item) ? "found" : "none";
   }
 
   async function loadCategories() {
@@ -345,7 +372,7 @@
   }
 
   function browseRow(item) {
-    const status = browseStatus(item.id, item.version);
+    const status = browseStatus(item);
     const install = el("button", {
       class: "btn" + (status === "update" ? " btn-accent" : ""),
       type: "button",
@@ -369,7 +396,8 @@
         el("div", { class: "browse-title" },
           el("button", { type: "button", onclick: () => guard(() => openDetail(item)) }, item.title),
           item.version ? el("span", { class: "tag" }, item.version) : null,
-          status === "update" ? el("span", { class: "tag pack" }, "update") : null
+          status === "update" ? el("span", { class: "tag pack" }, "update") : null,
+          status === "found" ? el("span", { class: "tag", title: "There is a mod with this name in your mods folder. Installing from here will track it." }, "found") : null
         ),
         el("div", { class: "browse-sub" }, [item.author, item.category].filter(Boolean).join(" · ")),
         item.tagline ? el("p", { class: "browse-tagline" }, item.tagline) : null,
@@ -405,7 +433,7 @@
     }
     title.textContent = detail.title || item.title;
 
-    const status = browseStatus(detail.id, detail.version);
+    const status = browseStatus(detail);
     const install = el("button", {
       class: "btn" + (status === "update" ? " btn-accent" : ""),
       type: "button",
@@ -421,7 +449,8 @@
       detail.category ? el("span", {}, detail.category) : null,
       detail.version ? el("span", {}, "v" + normVer(detail.version)) : null,
       detail.rating ? el("span", {}, "★ " + Number(detail.rating).toFixed(1)) : null,
-      detail.downloads ? el("span", {}, Number(detail.downloads).toLocaleString() + " downloads") : null
+      detail.downloads ? el("span", {}, Number(detail.downloads).toLocaleString() + " downloads") : null,
+      status === "found" ? el("span", {}, "already in your mods folder") : null
     );
 
     const links = (detail.links && detail.links.length)
