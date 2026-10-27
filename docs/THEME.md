@@ -201,19 +201,21 @@ Los presets son los `.ini` de `<carpeta del juego>/palettes` (integrados) y de
 y recuerda el personaje en `player-presets.json`. Borrar un preset lo mueve a
 `removed-by-coop-loader/presets-<fecha>/`; nunca se borra.
 
-### Acordeón y movimiento
+### Filas de opciones, grupos plegables y movimiento
 
-La pantalla de **Opciones** es un acordeón: cada sección es una cabecera con la
-misma barra de grupo que usan los mods (título, pista y flecha). Al pulsar una
-cabecera se cierra la anterior y se abre la nueva con una transición de altura;
-solo queda una abierta. Los grupos de **Mis mods** también se pueden plegar,
-pero recuerdan su estado y pueden estar todos abiertos a la vez.
+La pantalla de **Opciones** sigue el diseño del cliente original: filas grandes
+con título, descripción y el control a la derecha, separadas por una línea
+fina. El ajuste **Al apretar Jugar** usa un selector de dos botones, como el
+original. Los grupos de **Mis mods** se pueden plegar y recuerdan su estado.
 
 El movimiento copia el del cliente de referencia, sin dependencias:
 
 - **Cambio de pestaña**: se clona la pantalla anterior en una capa fija, se
   recorta con `clip-path` en la dirección del movimiento y se retira en 190 ms;
   la nueva dibuja sus bloques con un barrido y un pequeño escalonado.
+- **Buscar**: cada mod es una fila entera pulsable (icono, título, descripción,
+  autor, valoración y descargas); el botón **Instalar** se detiene aparte y la
+  ficha se abre en un diálogo con la misma jerarquía visual.
 - **Título**: cada letra del HUD sube y se va antes de que el título nuevo
   entre letra a letra.
 - **Barra lateral**: el marcador se desliza con un muelle entre secciones.

@@ -272,30 +272,6 @@
     window.setTimeout(() => section.classList.remove("is-entering"), 900);
   }
 
-  function setupAccordions() {
-    for (const acc of document.querySelectorAll(".settings-list.accordion > .acc")) {
-      const head = acc.querySelector(":scope > .acc-head");
-      const body = acc.querySelector(":scope > .acc-body");
-      if (!head || !body) continue;
-      body.inert = !acc.classList.contains("is-open");
-      head.addEventListener("click", () => {
-        const open = !acc.classList.contains("is-open");
-        if (open) {
-          for (const other of acc.parentElement.children) {
-            if (other === acc || !other.classList?.contains("acc")) continue;
-            other.classList.remove("is-open");
-            other.querySelector(":scope > .acc-head")?.setAttribute("aria-expanded", "false");
-            const otherBody = other.querySelector(":scope > .acc-body");
-            if (otherBody) otherBody.inert = true;
-          }
-        }
-        acc.classList.toggle("is-open", open);
-        head.setAttribute("aria-expanded", String(open));
-        body.inert = !open;
-      });
-    }
-  }
-
   class Sm64Text extends HTMLElement {
     static get observedAttributes() { return ["text", "data-refresh"]; }
     connectedCallback() { this.render(); }
@@ -360,7 +336,7 @@
       stateLine.textContent = ready
         ? "Archivo de Super Mario 64 (ROM) encontrado. Las imágenes y letras de la app se leen de él."
         : (rom && rom.message) || "Indica dónde está tu ROM de Super Mario 64 (USA) para usar el estilo del juego.";
-      stateLine.className = ready ? "caption state ok" : "caption state bad";
+      stateLine.className = ready ? "settings-desc state ok" : "settings-desc state bad";
     }
     if (!ready) {
       refreshSm64Text();
@@ -455,9 +431,9 @@
       state.sessionLaunchedFor = "";
       if (state.session) renderSession();
     }
-    $("#close-on-play").checked = !!st.closeOnPlay;
-    const closeWord = $("#close-on-play-word");
-    if (closeWord) closeWord.textContent = st.closeOnPlay ? "Cerrar el loader" : "Dejarlo abierto";
+    for (const btn of document.querySelectorAll("[data-close-on-play]")) {
+      btn.setAttribute("aria-pressed", String((btn.dataset.closeOnPlay === "true") === !!st.closeOnPlay));
+    }
 
     if (!state.hostSlotLoaded && st.hostSlot >= 1 && st.hostSlot <= 4) {
       state.host.slot = st.hostSlot;
@@ -466,14 +442,9 @@
     if (document.activeElement !== $("#game-path")) {
       $("#game-path").value = st.gamePath || "";
     }
-    const gs = $("#game-state");
-    if (st.gameFound) {
-      gs.textContent = st.gamePath;
-      gs.className = "settings-value state ok";
-    } else {
-      gs.textContent = "Aún no se encuentra. Elige la carpeta que tiene sm64coopdx.";
-      gs.className = "settings-value state bad";
-    }
+    $("#game-path").placeholder = st.gameFound
+      ? "Carpeta del juego"
+      : "No encontrada. Elige la carpeta que tiene sm64coopdx.";
 
     $("#path-data").textContent = st.gameData;
     $("#path-config").textContent = st.configPath + (st.configFound ? "" : "  (falta)");
@@ -803,60 +774,160 @@
     }
     $("#browse-more").hidden = b.page >= b.pages || b.loading;
     $("#browse-hint").textContent = b.loaded
-      ? `Página ${b.page} de ${b.pages}${b.fromCache ? " · en caché" : ""}. Haz clic en un título para leer el mod.`
+      ? `Página ${b.page} de ${b.pages}${b.fromCache ? " · en caché" : ""}. Haz clic en un mod para ver su descripción.`
       : "Los mods vienen de mods.sm64coopdx.com. El loader pregunta antes de instalar.";
+  }
+
+  function shortCount(value) {
+    const n = Number(value) || 0;
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "") + "M";
+    if (n >= 1_000) return Math.round(n / 1_000) + "k";
+    return String(n);
+  }
+
+  function browseStat(icon, text, title) {
+    const node = el("span", { class: "browse-stat", title });
+    if (state.rom && state.rom.ready && icon) {
+      node.append(
+        el("img", { class: "browse-stat-icon", src: `/rom-assets/hud/${icon}.png`, alt: "" }),
+        el("span", {}, text)
+      );
+      return node;
+    }
+    node.append(el("span", {}, `${icon === "star" ? "★" : "●"} ${text}`));
+    return node;
   }
 
   function browseRow(item) {
     const status = browseStatus(item);
     const install = el("button", {
-      class: "btn" + (status === "update" ? " btn-accent" : ""),
+      class: "btn browse-install" + (
+        status === "installed" ? " btn-quiet" : status === "update" ? " btn-accent" : " btn-install"
+      ),
       type: "button",
       disabled: status === "installed",
+      onclick: (ev) => {
+        ev.stopPropagation();
+        guard(() => installSite(item));
+      },
     }, status === "installed" ? "Instalado" : status === "update" ? "Actualizar" : "Instalar");
-    install.addEventListener("click", () => guard(() => installSite(item)));
 
     const icon = item.icon
       ? el("img", {
-          class: "browse-icon",
+          class: "browse-row-icon",
           src: item.icon,
           alt: "",
-          loading: "lazy",
           onerror: (ev) => { ev.target.style.visibility = "hidden"; },
         })
-      : el("div", { class: "browse-icon" });
+      : el("div", { class: "browse-row-icon is-empty" });
 
-    return el("div", { class: "browse-item" },
+    const stats = el("div", { class: "browse-row-stats" },
+      item.author ? el("span", { class: "browse-author" }, "de " + item.author) : null,
+      item.rating ? browseStat("star", Number(item.rating).toFixed(1), `${item.rating} de 5`) : null,
+      item.downloads ? browseStat("coin", `${shortCount(item.downloads)} descargas`, `${item.downloads} descargas`) : null
+    );
+
+    const tags = [
+      item.version ? el("span", { class: "tag" }, item.version) : null,
+      status === "update" ? el("span", { class: "tag pack" }, "actualizar") : null,
+      status === "found" ? el("span", {
+        class: "tag",
+        title: "Ya hay un mod con este nombre en tu carpeta. Al instalarlo desde aquí, el loader recordará su procedencia.",
+      }, "encontrado") : null,
+    ].filter(Boolean);
+
+    const open = () => guard(() => openDetail(item));
+    return el("div", {
+      class: "browse-row" + (status === "installed" ? " is-installed" : ""),
+      role: "button",
+      tabindex: "0",
+      "aria-label": `Ver ${item.title}`,
+      onclick: (ev) => {
+        if (ev.target.closest("button")) return;
+        open();
+      },
+      onkeydown: (ev) => {
+        if (ev.target !== ev.currentTarget) return;
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        ev.preventDefault();
+        open();
+      },
+    },
       icon,
-      el("div", { class: "browse-main" },
-        el("div", { class: "browse-title" },
-          el("button", { type: "button", onclick: () => guard(() => openDetail(item)) }, item.title),
-          item.version ? el("span", { class: "tag" }, item.version) : null,
-          status === "update" ? el("span", { class: "tag pack" }, "actualizar") : null,
-          status === "found" ? el("span", { class: "tag", title: "Ya hay un mod con este nombre en tu carpeta. Al instalarlo desde aquí, el loader recordará su procedencia." }, "encontrado") : null
+      el("div", { class: "browse-row-main" },
+        el("div", { class: "browse-row-title" },
+          el("span", { class: "browse-title" }, item.title),
+          ...tags
         ),
-        el("div", { class: "browse-sub" }, [item.author, item.category].filter(Boolean).join(" · ")),
-        item.tagline ? el("p", { class: "browse-tagline" }, item.tagline) : null,
-        el("div", { class: "browse-stats" },
-          item.rating ? el("span", {}, `★ ${Number(item.rating).toFixed(1)}${item.ratingCount ? ` (${item.ratingCount})` : ""}`) : null,
-          item.downloads ? el("span", {}, `${Number(item.downloads).toLocaleString()} descargas`) : null
-        )
+        item.tagline ? el("p", { class: "browse-row-tagline" }, item.tagline) : null,
+        stats
       ),
-      el("div", { class: "browse-action" }, install)
+      el("div", { class: "browse-row-action" }, install)
     );
   }
 
   async function openDetail(item) {
     const dialog = el("dialog", { class: "dialog detail-dialog" });
     const close = () => dialog.close();
-    const title = el("h3", {}, item.title);
-    const body = el("div", { class: "detail-body" }, el("p", { class: "boot" }, "Loading…"));
-
-    dialog.append(
-      el("div", { class: "detail-head" }, title, el("button", { class: "btn btn-ghost", type: "button", onclick: close }, "Cerrar")),
-      body
+    const head = el("div", { class: "detail-head" });
+    const body = el("div", { class: "detail-body" },
+      el("p", { class: "boot" }, "Cargando la descripción…")
     );
+
+    const renderHead = (d) => {
+      const status = browseStatus(d);
+      const install = el("button", {
+        class: "btn" + (status === "installed" ? " btn-quiet" : status === "update" ? " btn-accent" : " btn-install"),
+        type: "button",
+        disabled: status === "installed",
+        onclick: (ev) => {
+          ev.stopPropagation();
+          guard(async () => {
+            dialog.close();
+            await installSite(d);
+          });
+        },
+      }, status === "installed" ? "Instalado" : status === "update" ? "Actualizar" : "Instalar");
+
+      const meta = [
+        d.version ? "v" + normVer(d.version) : "",
+        d.author ? "de " + d.author : "",
+        d.category || "",
+      ].filter(Boolean).join(" · ");
+
+      const stats = el("div", { class: "detail-stats" },
+        d.rating ? browseStat("star", `${Number(d.rating).toFixed(1)}${d.ratingCount ? ` (${d.ratingCount})` : ""}`, `${d.rating} de 5`) : null,
+        d.downloads ? browseStat("coin", `${shortCount(d.downloads)} descargas`, `${d.downloads} descargas`) : null
+      );
+
+      head.replaceChildren(
+        d.icon
+          ? el("img", { class: "detail-icon", src: d.icon, alt: "" })
+          : el("div", { class: "detail-icon is-empty", "aria-hidden": "true" }),
+        el("div", { class: "detail-heading" },
+          el("h2", { class: "detail-title" }, d.title || item.title),
+          meta ? el("p", { class: "detail-meta" }, meta) : null,
+          d.tagline ? el("p", { class: "detail-tagline" }, d.tagline) : null,
+          stats,
+          el("div", { class: "detail-actions" },
+            install,
+            el("button", {
+              class: "btn",
+              type: "button",
+              onclick: () => openExternal(d.url || item.url),
+            }, "Abrir página")
+          )
+        ),
+        el("button", { class: "btn btn-sm detail-close", type: "button", onclick: close }, "Cerrar")
+      );
+    };
+
+    renderHead(item);
+    dialog.append(head, body);
     dialog.addEventListener("close", () => dialog.remove());
+    dialog.addEventListener("click", (ev) => {
+      if (ev.target === dialog) dialog.close();
+    });
     document.body.append(dialog);
     dialog.showModal();
 
@@ -864,50 +935,14 @@
     try {
       detail = await api("/api/catalog/detail?url=" + encodeURIComponent(item.url));
     } catch (err) {
-      body.replaceChildren(el("div", { class: "notice" }, err.message || "Could not load this mod’s page."));
+      body.replaceChildren(el("div", { class: "notice" }, err.message || "No se pudo cargar la página de este mod."));
       return;
     }
-    title.textContent = detail.title || item.title;
-
-    const status = browseStatus(detail);
-    const install = el("button", {
-      class: "btn" + (status === "update" ? " btn-accent" : ""),
-      type: "button",
-      disabled: status === "installed",
-    }, status === "installed" ? "Instalado" : status === "update" ? "Actualizar" : "Instalar");
-    install.addEventListener("click", () => guard(async () => {
-      dialog.close();
-      await installSite(detail);
-    }));
-
-    const meta = el("div", { class: "detail-meta" },
-      detail.author ? el("span", {}, "by " + detail.author) : null,
-      detail.category ? el("span", {}, detail.category) : null,
-      detail.version ? el("span", {}, "v" + normVer(detail.version)) : null,
-      detail.rating ? el("span", {}, "★ " + Number(detail.rating).toFixed(1)) : null,
-      detail.downloads ? el("span", {}, Number(detail.downloads).toLocaleString() + " downloads") : null,
-      status === "found" ? el("span", {}, "already in your mods folder") : null
-    );
-
-    const links = (detail.links && detail.links.length)
-      ? el("div", { class: "detail-links" },
-          el("span", { class: "caption" }, "Linked mods: "),
-          ...detail.links.map((link) => el("button", {
-            class: "btn btn-ghost",
-            type: "button",
-            onclick: () => guard(() => installSite(link)),
-          }, link.title))
-        )
-      : null;
-
-    const nodes = [meta];
-    if (links) nodes.push(links);
-    nodes.push(...renderBlocks(detail.blocks));
-    nodes.push(el("div", { class: "detail-actions" },
-      install,
-      el("button", { class: "btn btn-ghost", type: "button", onclick: () => openExternal(detail.url) }, "Open page")
-    ));
-    body.replaceChildren(...nodes);
+    renderHead({ ...item, ...detail, tagline: item.tagline || detail.tagline });
+    const blocks = renderBlocks(detail.blocks);
+    body.replaceChildren(...(blocks.length
+      ? blocks
+      : [el("p", { class: "detail-empty" }, "Este mod no tiene descripción.")]));
   }
 
   function renderBlocks(blocks) {
@@ -2712,7 +2747,6 @@
   // ---------- boot ----------
 
   function bind() {
-    setupAccordions();
     window.addEventListener("resize", () => positionRailMarker());
     for (const btn of document.querySelectorAll(".rail-link")) {
       btn.addEventListener("click", () => showTab(btn.dataset.tab));
@@ -2750,7 +2784,9 @@
     $("#play").addEventListener("click", launchGame);
     $("#game-save").addEventListener("click", saveGamePath);
     $("#game-detect").addEventListener("click", detectGame);
-    $("#close-on-play").addEventListener("change", (ev) => setCloseOnPlay(ev.target.checked));
+    for (const btn of document.querySelectorAll("[data-close-on-play]")) {
+      btn.addEventListener("click", () => setCloseOnPlay(btn.dataset.closeOnPlay === "true"));
+    }
     $("#session-pill").addEventListener("click", () => showTab("play"));
     for (const btn of document.querySelectorAll(".back-to-mods")) {
       btn.addEventListener("click", () => showTab("mods"));

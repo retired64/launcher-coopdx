@@ -38,7 +38,8 @@ Un solo binario, sin cgo, con una interfaz web local.
 | Copia de mods/aspecto/partidas por código (`copy/v1`) | ✅ |
 | Tema visual desde la ROM (texturas, fuentes, títulos, botones) | ✅ |
 | Jugador: nombre, personaje, colores y presets | ✅ |
-| Opciones en acordeón y transiciones de pantalla, botones y hover | ✅ |
+| Opciones al estilo original (filas con título, descripción y control) | ✅ |
+| Transiciones de pantalla, botones, hover y detalles de mods | ✅ |
 | Visor 3D del personaje | ⏳ fase 6 |
 
 ## Vista
@@ -232,11 +233,14 @@ tu máquina y guarda el resultado en su caché.
 - **Partidas**: caras de Mario, iconos de estrella y el rótulo `NUEVO`.
 - **Jugador**: nombre, personaje, ocho colores y presets leídos de
   `sm64config.txt` y de las carpetas `palettes/`.
-- **Opciones**: un acordeón con la misma cabecera de grupo que los mods, y
-  transiciones de pantalla (barrido con la pantalla anterior), letras que
-  entran y salen, marcador deslizante en la barra lateral, botones que se
-  levantan y se hunden, interruptores con rebote y tarjetas que reaccionan al
-  ratón.
+- **Opciones**: filas grandes como el cliente original, con título, descripción
+  y el control a la derecha; el ajuste de Jugar usa un selector de dos botones.
+- **Buscar**: lista de mods con icono, título, descripción, autor, valoración y
+  descargas; toda la fila abre la ficha del mod y el botón Instalar queda a la
+  derecha.
+- **Movimiento**: transiciones de pantalla con barrido, letras que entran y
+  salen, marcador deslizante en la barra lateral, botones que se levantan y se
+  hunden y filas que reaccionan al ratón.
 
 En **Opciones → Estilo del juego → Usar otro archivo** eliges la ROM. También se
 busca sola en `<datos del juego>/baserom.us.z64` y en la carpeta del juego. Se

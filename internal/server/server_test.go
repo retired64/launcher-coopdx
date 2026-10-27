@@ -110,9 +110,9 @@ func TestStaticPageAndCSP(t *testing.T) {
 	page := string(body)
 	for _, want := range []string{
 		"COOP MODS",
-		"settings-list accordion",
-		"acc-head",
-		"aria-expanded",
+		"settings-item",
+		"data-close-on-play",
+		"browse-list",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("index.html lacks %q", want)
