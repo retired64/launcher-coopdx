@@ -206,6 +206,13 @@ El host escribe `coop_host_save_slot` y `coop_host_port` en `sm64config.txt`
 antes de lanzar el juego. El join pasa el puerto efímero del puente con
 `--client 127.0.0.1 <puerto>`.
 
+El loader **no** copia mods al unirse. El juego del anfitrión envía su lista de
+mods activos y el del amigo descarga los archivos que no tenga en
+`.tmp/<sesión>/`, comparando MD5 contra `mod.cache`. El puente solo transporta
+esos paquetes; no los interpreta. Está documentado en [MOD_SYNC.md](MOD_SYNC.md).
+La fase 4 copia mods/aspecto/partidas entre dispositivos para **preinstalar**,
+no porque haga falta para entrar a una partida.
+
 Los detalles byte a byte, los temporizadores y la comparación con el cliente de
 referencia están en [SESSION.md](SESSION.md); el contrato de red, en
 [PROTOCOL.md](PROTOCOL.md).

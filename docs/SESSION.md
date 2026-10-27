@@ -331,6 +331,22 @@ Cuando el juego se cierra, la sala **no** se cierra:
 
 Esto reproduce `tC()`/`zS()` del cliente de escritorio.
 
+### Los mods y la partida viajan solos
+
+El loader no copia los mods al unirse, y no hace falta que lo haga: **el propio
+juego** pide la lista de mods activos del anfitrión, compara el MD5 de cada
+archivo con su caché y descarga los que le faltan en `.tmp/<sesión>/` antes de
+entrar. La partida de 512 bytes también viaja en el `PACKET_JOIN`, y las
+escrituras del amigo se mandan al anfitrión.
+
+El puente solo tiene que dejar pasar esos datagramas sin tocarlos. Como son
+paquetes **fiables** de la capa del juego, el DataChannel sin reintentos no
+rompe la descarga: el juego reintenta por su cuenta.
+
+Los detalles (paquetes, tamaños, caché, límites y seguridad) están en
+[MOD_SYNC.md](MOD_SYNC.md). Lo importante para la UI: el amigo **no** necesita
+instalar los mods del anfitrión antes de unirse.
+
 ## 10. Estados que ve la interfaz
 
 ```json
@@ -371,6 +387,10 @@ Esto reproduce `tC()`/`zS()` del cliente de escritorio.
   cliente.
 - **No se valida el contenido del juego**: los datagramas se reenvían tal cual,
   con el límite de 4096 B.
+- **El anfitrión ejecuta Lua en tu juego.** Al unirse, el juego descarga los
+  mods activos del anfitrión y ejecuta su Lua con los permisos del proceso. El
+  MD5 detecta corrupción, no autentica al emisor. Únete solo a gente de
+  confianza. Ver [MOD_SYNC.md](MOD_SYNC.md).
 
 Mejoras recomendadas para una versión 3 propia (documentadas en
 `PROTOCOL.md`): 128 bits de clave, PAKE (SPAKE2/OPAQUE) y sala versionada
@@ -387,7 +407,8 @@ Mejoras recomendadas para una versión 3 propia (documentadas en
 | `gameIn` join | primer paquete del juego | primer paquete del juego |
 | Detección de 7777 ocupado | sondeo cada 2 s en Android | no aplica en escritorio |
 | Servicio en primer plano | Android | no aplica en escritorio |
-| Copia entre dispositivos | `copy/v1` | fase 4 |
+| Sincronización de mods | la hace el juego (`.tmp` + `mod.cache`) | igual; el puente es transparente |
+| Copia entre dispositivos | `copy/v1` | fase 4 (para preinstalar; no hace falta para unirse) |
 
 ## 13. Cómo probarlo
 

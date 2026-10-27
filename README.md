@@ -5,9 +5,10 @@ Un solo binario, sin cgo, con una interfaz web local.
 
 > **Estado:** fases 0–3. Mods, catálogo, dependencias, perfiles, partidas,
 > ajustes y **juego online por código** (WebRTC + puente UDP) funcionan. La
-> copia entre dispositivos es la siguiente fase.
+> copia entre dispositivos (para preinstalar, no para unirse) es la siguiente
+> fase.
 
-[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md)
+[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md) · [Sincronización de mods](docs/MOD_SYNC.md)
 
 ---
 
@@ -32,6 +33,7 @@ Un solo binario, sin cgo, con una interfaz web local.
 | Sesión P2P por código (WebRTC + puente UDP 7777) | ✅ |
 | Reconexión con retención del lugar (`STILL_HERE`) | ✅ |
 | Consentimiento, ruta directa/relé y registro de conexión | ✅ |
+| Sincronización de mods del anfitrión al unirse (la hace el juego) | ✅ |
 | Copia de mods/aspecto/partidas entre dispositivos | ⏳ fase 4 |
 | Tema visual desde la ROM + visor 3D | ⏳ fase 5 |
 
@@ -136,9 +138,18 @@ game**. En el juego hay que elegir **Direct Connection**:
 - anfitrión: **Host → Direct Connection → Host**;
 - amigo: **Join → Direct Connection → Join** con `localhost` o `127.0.0.1`.
 
-El aviso de *port forwarding* se ignora: el puente UDP hace ese trabajo. Los
-dos jugadores necesitan **los mismos mods activos**; el loader no los copia
-todavía (eso es la fase 4).
+El aviso de *port forwarding* se ignora: el puente UDP hace ese trabajo.
+
+**No hace falta tener los mismos mods instalados.** Al unirse, el juego del
+amigo pide la lista de mods activos del anfitrión y descarga los que le falten
+en una carpeta temporal propia (`.tmp/<sesión>/`), antes de entrar a la partida.
+Si ya tiene el mismo archivo (mismo MD5), lo reutiliza. Los mods del amigo que
+no estén activos en el anfitrión no se usan durante esa sesión. El loader no
+interviene en esa transferencia: solo transporta los datagramas del juego. Está
+explicado con el código del juego en [docs/MOD_SYNC.md](docs/MOD_SYNC.md).
+
+> **Ojo:** el anfitrión te envía Lua y tu juego lo ejecuta. Únete solo a
+> personas de confianza.
 
 Puntos importantes:
 
@@ -285,7 +296,7 @@ partida completa host↔join contra un relay WebSocket local.
 | 0–1 | núcleo local: mods, config, perfiles, partidas, UI | ✅ |
 | 2 | catálogo del sitio + descargas + dependencias Lua | ✅ |
 | 3 | sesión por código: PBKDF2/AES-GCM, trackers, `pion/webrtc`, puente UDP 7777, reconexión | ✅ |
-| 4 | copia de mods/aspecto/partidas entre PC y Android |
+| 4 | copia de mods/aspecto/partidas entre PC y Android (para preinstalar; unirse ya no lo necesita) |
 | 5 | tema visual y fuentes desde la ROM del usuario |
 | 6 | visor 3D del personaje leyendo el ejecutable del juego |
 | 7 | creador de mods, test headless, empaquetado, updater firmado |
@@ -319,9 +330,14 @@ embedded web UI. Phases 0–3 cover game detection, mod discovery and installati
 file, the community mod catalog (browse/search/install/update), Lua global
 dependency resolution, and **online play by code** with a WebRTC DataChannel
 and a loopback UDP bridge. Sessions reconnect with ICE restart, relay fallback
-and a one-minute "hold their place" cache.
+and a one-minute "hold their place" cache. Joining players do **not** need the
+host's mods preinstalled: the game itself transfers the host's active mod set
+and the joining client caches the missing files under `.tmp/<session>/` before
+entering.
 
-The device-to-device copy is the next phase. The session engine is documented in
+The device-to-device copy (preinstalling mods, player look and saves) is the next
+phase; it is a convenience for migrating devices, not a requirement for joining.
+The session engine is documented in
 [docs/SESSION.md](docs/SESSION.md); the wire contract is in
 [docs/PROTOCOL.md](docs/PROTOCOL.md). Not affiliated with Nintendo or the sm64coopdx
 team; no game assets are bundled.

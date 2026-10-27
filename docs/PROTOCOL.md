@@ -146,6 +146,11 @@ enlace se reenvían (32 KiB cada 50 ms).
 
 ## 8. Copia entre dispositivos
 
+> Esto **no** es lo que sincroniza los mods al unirse. Eso lo hace el propio
+> juego del anfitrión (lista de mods activos, MD5 y descarga a `.tmp/<sesión>/`;
+> ver [MOD_SYNC.md](MOD_SYNC.md)). Este canal sirve para copiar entre
+> dispositivos: preinstalar mods, aspecto del jugador y partidas.
+
 Misma señalización, sal `coop-mod-loader/copy/v1` (los `infoHash` de copia y de
 juego nunca colisionan). DataChannel **`copy` ordenado y fiable**.
 

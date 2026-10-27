@@ -771,7 +771,8 @@
         el("ul", { class: "consent-list" },
           el("li", {}, "You get a code, and your friend types it in."),
           el("li", {}, "The two apps find each other through public WebTorrent trackers and this app's relay on Cloudflare. What they exchange is locked with your code."),
-          el("li", {}, "Your internet address is shared with those meeting points, the relay and the address-lookup services of Google and Cloudflare. Your game traffic only goes directly to your friend; the relay is used only when a direct route is impossible.")
+          el("li", {}, "Your internet address is shared with those meeting points, the relay and the address-lookup services of Google and Cloudflare. Your game traffic only goes directly to your friend; the relay is used only when a direct route is impossible."),
+          el("li", {}, "When you join, the host's game sends its active mods to yours, and your game runs their Lua. Join only people you trust.")
         ),
         el("p", { class: "hint" },
           "If you say no, you can still play online the usual way: CoopNet or Direct Connection in the game's own menu."
@@ -1040,7 +1041,7 @@
           onclick: () => guard(startHost),
         }, state.sessionBusy ? "Starting…" : "Host a game")
       ),
-      el("p", { class: "hint" }, "Both players need the same mods on. The game opens on port 7777.")
+      el("p", { class: "hint" }, "Your friend's game downloads your active mods when they join. The game opens on port 7777.")
     );
 
     const input = el("input", {
@@ -1208,6 +1209,9 @@
       ),
       sessionStep(2, "Open the game",
         el("p", { class: "caption" }, gameLine),
+        el("p", { class: "hint" },
+          "Before you enter, your game downloads any of your friend's active mods that you don't have. The first join can take a while."
+        ),
         autoChoice(),
         el("div", { class: "session-actions" }, open),
         !s.gameIn && state.status && state.status.running
