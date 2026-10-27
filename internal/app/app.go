@@ -246,6 +246,7 @@ func (s *Service) Remove(id string, kind mods.Kind) (string, error) {
 type SaveState struct {
 	Path   string        `json:"path"`
 	Exists bool          `json:"exists"`
+	Names  [4]string     `json:"names"`
 	Slots  []eeprom.Slot `json:"slots"`
 }
 
@@ -255,6 +256,9 @@ func (s *Service) Saves() (SaveState, error) {
 	defer s.mu.Unlock()
 
 	state := SaveState{Path: s.savePath(), Slots: make([]eeprom.Slot, 0, eeprom.SlotCount)}
+	if doc, err := s.readConfigLocked(); err == nil {
+		state.Names = doc.SaveNames()
+	}
 	file, err := eeprom.Load(state.Path)
 	if err != nil {
 		if os.IsNotExist(err) {

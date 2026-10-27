@@ -57,6 +57,47 @@ Si no detecta el juego, elígelo en **Settings** o pásalo por CLI:
 ./coop-loader game detect
 ```
 
+## Probar sin riesgo
+
+**Contra tu instalación real** (solo lee hasta que pulses un interruptor):
+
+```bash
+./coop-loader status      # rutas, si el juego está abierto, config y save
+./coop-loader mods list   # qué mods ve y cuáles están activos
+./coop-loader saves list  # estrellas, monedas y nombres de tus 4 slots
+./coop-loader             # abre la interfaz
+```
+
+Si algo sale mal, todo es reversible:
+
+```bash
+# volver al config anterior
+cp ~/.local/share/sm64coopdx/sm64config.modloader-backup.txt \
+   ~/.local/share/sm64coopdx/sm64config.txt
+
+# los mods quitados siguen aquí
+ls ~/.local/share/sm64coopdx/removed-by-coop-loader/
+```
+
+**En un entorno de mentira**, sin tocar nada tuyo:
+
+```bash
+DEMO=/tmp/coop-loader-demo
+rm -rf "$DEMO" && mkdir -p "$DEMO"/{home,config,data}
+export HOME="$DEMO/home" XDG_CONFIG_HOME="$DEMO/config" XDG_DATA_HOME="$DEMO/data"
+
+mkdir -p "$DEMO/home/Games/sm64coopdx/mods/Example" "$XDG_DATA_HOME/sm64coopdx"
+printf '#!/bin/sh\n' > "$DEMO/home/Games/sm64coopdx/sm64coopdx"
+chmod +x "$DEMO/home/Games/sm64coopdx/sm64coopdx"
+printf -- '-- name: Example Mod\n' > "$DEMO/home/Games/sm64coopdx/mods/Example/main.lua"
+printf 'sound = 1\n' > "$XDG_DATA_HOME/sm64coopdx/sm64config.txt"
+
+./coop-loader
+```
+
+Ahí puedes instalar un zip, activar mods, crear perfiles y probar el save sin
+miedo. Cuando cierres la terminal, tus datos reales siguen intactos.
+
 ## CLI
 
 ```bash

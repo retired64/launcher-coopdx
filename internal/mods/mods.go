@@ -98,6 +98,9 @@ var (
 // Clean strips the game's inline colour codes and escape sequences from a
 // description string.
 func Clean(s string) string {
+	// Mod authors often double the backslash in comments ("\\#ff0000\\"),
+	// so collapse it before looking for colour codes.
+	s = strings.ReplaceAll(s, `\\`, `\`)
 	s = colorCode.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, `\n`, " ")
 	s = escaped.ReplaceAllString(s, "$1")
@@ -209,7 +212,11 @@ func listMods(dir string, origin Origin, enabled map[string]bool) []Mod {
 			continue
 		}
 		full := filepath.Join(dir, name)
-		if e.IsDir() {
+		info, err := os.Stat(full) // follow symlinks: mod links are common
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
 			entry, ok := MainLua(full)
 			if !ok {
 				continue
@@ -267,7 +274,12 @@ func listPacks(dir string, origin Origin, enabled map[string]bool) []Mod {
 	}
 	var out []Mod
 	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		full := filepath.Join(dir, e.Name())
+		info, err := os.Stat(full) // follow symlinks
+		if err != nil || !info.IsDir() {
 			continue
 		}
 		out = append(out, Mod{
@@ -275,7 +287,7 @@ func listPacks(dir string, origin Origin, enabled map[string]bool) []Mod {
 			Name:     e.Name(),
 			Kind:     KindPack,
 			Origin:   origin,
-			Path:     filepath.Join(dir, e.Name()),
+			Path:     full,
 			IsFolder: true,
 			Enabled:  enabled[e.Name()],
 		})

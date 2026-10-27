@@ -250,6 +250,11 @@
 
   const SLOT_LETTERS = ["A", "B", "C", "D"];
 
+  function slotLabel(i) {
+    const name = (state.saves && state.saves.names && state.saves.names[i]) || "";
+    return name.trim() ? `${name.trim()} · ${SLOT_LETTERS[i]}` : `MARIO ${SLOT_LETTERS[i]}`;
+  }
+
   function renderSaves() {
     const grid = $("#saves-grid");
     const data = state.saves;
@@ -260,7 +265,7 @@
   function saveCard(slot) {
     const exists = slot.valid && slot.exists;
     const head = el("div", { class: "save-head" },
-      el("span", { class: "save-slot" }, "MARIO " + SLOT_LETTERS[slot.index]),
+      el("span", { class: "save-slot" }, slotLabel(slot.index)),
       exists ? el("span", { class: "tag" }, slot.signature) : null
     );
 
@@ -283,7 +288,7 @@
   }
 
   function openCopyDialog(from) {
-    $("#copy-title").textContent = `Copy MARIO ${SLOT_LETTERS[from]} to…`;
+    $("#copy-title").textContent = `Copy ${slotLabel(from)} to…`;
     const targets = $("#copy-targets");
     targets.replaceChildren();
     for (let i = 0; i < 4; i++) {
@@ -293,7 +298,7 @@
         class: "btn",
         type: "button",
         onclick: () => { $("#copy-dialog").close(); copySlot(from, i); },
-      }, `MARIO ${SLOT_LETTERS[i]}${occupied ? " (replaces it)" : " (empty)"}`));
+      }, `${slotLabel(i)}${occupied ? " (replaces it)" : " (empty)"}`));
     }
     $("#copy-dialog").showModal();
   }
@@ -302,12 +307,12 @@
     await guard(async () => {
       await postJSON("/api/saves/copy", { from, to });
       await loadSaves();
-      toast(`Copied ${SLOT_LETTERS[from]} to ${SLOT_LETTERS[to]}.`, "ok");
+      toast(`Copied ${slotLabel(from)} to ${slotLabel(to)}.`, "ok");
     });
   }
 
   async function clearSlot(slot) {
-    if (!confirm(`Erase MARIO ${SLOT_LETTERS[slot.index]}?\n\nA backup of the file stays next to it.`)) return;
+    if (!confirm(`Erase ${slotLabel(slot.index)}?\n\nA backup of the file stays next to it.`)) return;
     await guard(async () => {
       await postJSON("/api/saves/clear", { slot: slot.index });
       await loadSaves();

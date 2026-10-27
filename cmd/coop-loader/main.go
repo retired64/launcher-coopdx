@@ -268,11 +268,15 @@ func savesCmd(args []string) error {
 		}
 		fmt.Println("file:", withMissing(state.Path, state.Exists))
 		for _, slot := range state.Slots {
+			name := state.Names[slot.Index]
+			if name == "" {
+				name = "MARIO " + string(rune('A'+slot.Index))
+			}
 			if slot.Valid && slot.Exists {
-				fmt.Printf("%c  %3d stars  %3d coins  cap %d/%d  [%s]\n",
-					'A'+slot.Index, slot.Stars, slot.Coins, slot.CapLevel, slot.CapArea, slot.Signature)
+				fmt.Printf("%c  %-20s %3d stars  %3d coins  cap %d/%d  [%s]\n",
+					'A'+slot.Index, name, slot.Stars, slot.Coins, slot.CapLevel, slot.CapArea, slot.Signature)
 			} else {
-				fmt.Printf("%c  empty\n", 'A'+slot.Index)
+				fmt.Printf("%c  %-20s empty\n", 'A'+slot.Index, name)
 			}
 		}
 		return nil

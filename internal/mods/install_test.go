@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -128,6 +129,35 @@ func TestInstallZipDynosPack(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(data, "dynos", "packs", "MyModel", "actors", "mario.bin")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestListFollowsSymlinkedMods(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating symlinks needs extra privileges on Windows")
+	}
+	root := t.TempDir()
+	target := filepath.Join(root, "outside", "Linked")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "main.lua"), []byte("-- name: Linked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data := filepath.Join(root, "data")
+	if err := os.MkdirAll(filepath.Join(data, "mods"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(data, "mods", "Linked")); err != nil {
+		t.Fatal(err)
+	}
+
+	list := List(Paths{GameData: data}, map[string]bool{"Linked": true}, map[string]bool{})
+	if len(list) != 1 {
+		t.Fatalf("list = %+v", list)
+	}
+	if list[0].ID != "Linked" || !list[0].Enabled {
+		t.Fatalf("mod = %+v", list[0])
 	}
 }
 
