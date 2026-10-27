@@ -9,7 +9,7 @@ Un solo binario, sin cgo, con una interfaz web local.
 > ROM** (texturas, letras, títulos y botones) funcionan. El visor 3D del
 > personaje es la siguiente fase.
 
-[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Aspecto desde la ROM](docs/THEME.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md) · [Sincronización de mods](docs/MOD_SYNC.md) · [Copia](docs/COPY.md)
+[English summary](#english-summary) · [Arquitectura](docs/ARCHITECTURE.md) · [Aspecto desde la ROM](docs/THEME.md) · [Escritorio y AppImage](docs/DESKTOP_APPIMAGE.md) · [Protocolo](docs/PROTOCOL.md) · [Motor de sesión](docs/SESSION.md) · [Sincronización de mods](docs/MOD_SYNC.md) · [Copia](docs/COPY.md)
 
 ---
 
